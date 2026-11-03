@@ -1,6 +1,8 @@
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import {
 	type Component,
+	type OverlayHandle,
+	type TUI,
 	truncateToWidth,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
@@ -140,22 +142,32 @@ export default function (pi: ExtensionAPI) {
 
 	let topBarComponent: TopStatusBarComponent | null = null;
 	let currentContext: ExtensionContext | null = null;
-	let timer: NodeJS.Timeout | null = null;
+	let tuiInstance: TUI | null = null;
+	let overlayHandle: OverlayHandle | null = null;
+	let timer: ReturnType<typeof setInterval> | null = null;
+
+	const removeOverlay = () => {
+		overlayHandle?.hide();
+		overlayHandle = null;
+	};
 
 	const refreshWidget = () => {
-		if (!currentContext || currentContext.mode !== "tui") return;
-		currentContext.ui.setWidget(
-			"ipiui_status_bar",
-			(_tui, theme) => {
-				if (!topBarComponent) {
-					topBarComponent = new TopStatusBarComponent(state, theme, currentContext!);
-				} else {
-					topBarComponent.updateState(state, theme);
-				}
-				return topBarComponent;
-			},
-			{ placement: "aboveEditor" }
-		);
+		if (!currentContext || currentContext.mode !== "tui" || !topBarComponent || !tuiInstance) return;
+		if (state.visible && !overlayHandle) {
+			overlayHandle = tuiInstance.showOverlay(topBarComponent, {
+				anchor: "top-left",
+				row: 0,
+				col: 0,
+				width: "100%",
+				maxHeight: 1,
+				margin: 0,
+				nonCapturing: true,
+			});
+		} else if (!state.visible) {
+			removeOverlay();
+		}
+		topBarComponent.invalidate();
+		tuiInstance.requestRender();
 	};
 
 	// 运行计时器
@@ -261,14 +273,34 @@ export default function (pi: ExtensionAPI) {
 		state.provider = ctx.model?.provider;
 		state.thinkingLevel = ctx.thinkingLevel;
 
-		ctx.ui.notify("ipiui 状态栏扩展已成功加载", "info");
-		refreshWidget();
+		if (ctx.mode !== "tui") return;
+		// The empty widget owns overlay cleanup and supplies Pi's TUI/theme.
+		// Its slot renders no lines; only the viewport-relative overlay is visible.
+		ctx.ui.setWidget("ipiui_status_bar", (tui, theme) => {
+			removeOverlay();
+			tuiInstance = tui;
+			topBarComponent = new TopStatusBarComponent(state, theme, ctx);
+			refreshWidget();
+			return {
+				render: () => [],
+				invalidate: () => topBarComponent?.invalidate(),
+				dispose: () => {
+					stopTimer();
+					removeOverlay();
+					topBarComponent = null;
+					tuiInstance = null;
+				},
+			};
+		});
+		ctx.ui.notify("ipiui 顶部悬浮状态栏已加载", "info");
 	});
 
 	// 7. 会话关闭时清理
 	pi.on("session_shutdown", async () => {
 		stopTimer();
+		removeOverlay();
 		topBarComponent = null;
+		tuiInstance = null;
 		currentContext = null;
 	});
 

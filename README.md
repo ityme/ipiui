@@ -4,7 +4,7 @@ A clean, non-intrusive floating status bar extension for the [Pi coding agent](h
 
 ## Features
 
-- 🚀 **Real-time Status Bar**: Displays a persistent, full-width widget above the prompt editor.
+- 🚀 **Real-time Status Overlay**: Floats across the first row of the terminal's visible viewport in both regular and fullscreen modes, independent of transcript length.
 - ⚡ **Passive & Non-capturing**: Does not capture focus or interfere with prompt typing, autocomplete, or keyboard shortcuts.
 - ⏱ **Live Execution Timer & Tool Tracking**: Displays execution duration and active tool (e.g. `bash`, `edit`, `read`) while the agent runs.
 - 🤖 **Model & Thinking Level**: Shows current LLM model (`provider/modelId`) and reasoning/thinking level.
@@ -37,9 +37,13 @@ Add to your `~/.pi/agent/settings.json`:
 - `/topbar on` — Show status bar
 - `/topbar off` — Hide status bar
 
+The bar overlays the top row rather than reserving transcript space. Other dialogs can appear above it and keep their keyboard focus. In Pi 1.5.0, active overlays prevent switching between regular and fullscreen TUI modes: run `/topbar off`, change the mode in `/settings`, then run `/topbar on`.
+
+In regular mode, the terminal emulator owns scrollback. When reviewing older terminal scrollback, the extension cannot draw over that historical view; return to the live output to see the status bar. Fullscreen mode keeps it at the viewport top while navigating the transcript.
+
 ## Verification
 
-Run `npm test` to check all status badges using Pi 1.5.0's real `dark`, `light`, and `system` themes, narrow terminal widths, context usage, and lifecycle transitions. Tests use installed Pi development peers or the default Pi 1.5.0 installation; set `PI_TEST_HOST_ROOT` to its `node_modules` directory if it is elsewhere.
+Run `npm test` to check all status badges using Pi 1.5.0's real `dark`, `light`, and `system` themes, narrow terminal widths, context usage, and lifecycle transitions. Integration tests run the real regular/fullscreen TUI renderers against an in-memory terminal, checking first-row placement with long transcripts, resizing, input focus, other overlays, visibility toggles, remounting, and cleanup. Tests use installed Pi development peers or the default Pi 1.5.0 installation; set `PI_TEST_HOST_ROOT` to its `node_modules` directory if it is elsewhere.
 
 After updating the extension, restart Pi with `pi -e I:/ispace/ipiui` (or run `/reload` in an instance started with that option). Send a prompt to check `RUNNING`, then press Escape during execution to check `STOPPED`.
 

@@ -28,7 +28,7 @@ const jiti = createJiti(path.join(projectRoot, "index.ts"), {
 const { default: extension, TopStatusBarComponent } = jiti(path.join(projectRoot, "index.ts"));
 const { getThemeByName } = await import(pathToFileURL(path.join(hostRoot,
 	"@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js")));
-const { visibleWidth, stripTerminalSequences } = await import(pathToFileURL(path.join(hostRoot,
+const { visibleWidth, stripTerminalSequences, TuiMainScreen, TuiAltScreen, Text } = await import(pathToFileURL(path.join(hostRoot,
 	"@earendil-works/pi-tui/dist/index.js")));
 const context = {
 	getContextUsage: () => ({ tokens: 24500, contextWindow: 128000, percent: 19.140625 }),
@@ -68,45 +68,127 @@ test("real theme renders context usage including zero and unknown counts", () =>
 	}
 });
 
-test("Pi events render READY → RUNNING → ERROR → RUNNING → STOPPED", async () => {
-	const handlers = new Map();
-	const commands = new Map();
-	let widget;
-	const ctx = {
-		...context, mode: "tui", model: { id: "test-model", provider: "test-provider" },
-		thinkingLevel: "high",
-		ui: {
-			notify() {},
-			setWidget(_key, factory) {
-				widget = factory({}, getThemeByName("dark"));
-				// Pi renders asynchronously; eager rendering also catches invalid theme tokens here.
-				widget.render(200);
+class TestTerminal {
+	columns = 200;
+	rows = 24;
+	kittyProtocolActive = false;
+	output = "";
+	start(onInput, onResize) { this.input = onInput; this.resize = onResize; }
+	stop() {}
+	write(data) { this.output += data; }
+	moveBy() {}
+	hideCursor() {}
+	showCursor() {}
+	clearLine() {}
+	clearFromCursor() {}
+	clearScreen() {}
+	setTitle() {}
+	setProgress() {}
+	setProgramStatus() {}
+}
+
+for (const Renderer of [TuiMainScreen, TuiAltScreen]) {
+	test(`${Renderer.name}: top overlay stays at viewport row zero, preserves focus and cleans up`, async () => {
+		const terminal = new TestTerminal();
+		const tui = new Renderer(terminal);
+		const handlers = new Map();
+		const commands = new Map();
+		let widget;
+		let overlay;
+		let overlayHandle;
+		let typed = "";
+		const editor = {
+			render: () => ["> " + typed], invalidate() {},
+			handleInput: (data) => { typed += data; },
+		};
+		const chat = { lines: ["short chat"], render() { return this.lines; }, invalidate() {} };
+		tui.addChild(chat);
+		tui.addChild(editor);
+		tui.setFocus(editor);
+		const showOverlay = tui.showOverlay.bind(tui);
+		tui.showOverlay = (component, options) => {
+			overlay = component;
+			assert.equal(options.row, 0);
+			assert.equal(options.width, "100%");
+			assert.equal(options.nonCapturing, true);
+			overlayHandle = showOverlay(component, options);
+			return overlayHandle;
+		};
+		const ctx = {
+			...context, mode: "tui", model: { id: "test-model", provider: "test-provider" },
+			thinkingLevel: "high",
+			ui: {
+				notify() {},
+				setWidget(_key, factory) {
+					widget?.dispose?.();
+					widget = factory(tui, getThemeByName("dark"));
+					assert.deepEqual(widget.render(200), [], "Widget slot must occupy zero rows");
+				},
 			},
-		},
-	};
-	extension({ on: (event, handler) => handlers.set(event, handler),
-		registerCommand: (name, command) => commands.set(name, command) });
-	const emit = async (name, event = {}) => handlers.get(name)(event, ctx);
-	const line = () => stripTerminalSequences(widget.render(200)[0]);
-	try {
-		await emit("session_start");
-		assert.ok(line().includes("READY"));
-		await emit("agent_start");
-		assert.ok(line().includes("RUNNING"));
-		await emit("tool_execution_start", { toolName: "bash" });
-		assert.ok(line().includes("bash"));
-		await emit("message_end", { message: { role: "assistant", stopReason: "error", errorMessage: "429" } });
-		await emit("agent_settled", { aborted: false });
-		assert.ok(line().includes("ERROR"));
-		await emit("agent_start");
-		assert.ok(line().includes("RUNNING"));
-		await emit("agent_settled", { aborted: true });
-		assert.ok(line().includes("STOPPED"));
-		await commands.get("topbar").handler("off", ctx);
-		assert.deepEqual(widget.render(200), []);
-		await commands.get("topbar").handler("on", ctx);
-		assert.ok(line().includes("STOPPED"));
-	} finally {
-		await emit("session_shutdown");
-	}
-});
+		};
+		extension({ on: (event, handler) => handlers.set(event, handler),
+			registerCommand: (name, command) => commands.set(name, command) });
+		const emit = async (name, event = {}) => handlers.get(name)(event, ctx);
+		const line = () => stripTerminalSequences(overlay.render(200)[0]);
+		const viewport = () => {
+			tui.renderNow();
+			// Inspect the actual renderer's final frame, not a hand-written layout mock.
+			const frame = tui.mode === "regular" ? tui.captureRenderState().previousLines : tui.previousScreen;
+			return frame.slice(-terminal.rows).map(stripTerminalSequences);
+		};
+		tui.start();
+		try {
+			await emit("session_start");
+			assert.ok(viewport()[0].includes("READY"));
+			assert.equal(overlayHandle.getBounds().row, 0);
+			assert.equal(tui.getFocusedComponent(), editor);
+			terminal.input("hello");
+			assert.equal(typed, "hello");
+
+			chat.lines = Array.from({ length: 100 }, (_, i) => `Chat row ${i}`);
+			assert.ok(viewport()[0].includes("READY"), "Long transcript must keep bar at visible top");
+			for (const [columns, rows] of [[80, 12], [120, 40], [200, 24]]) {
+				terminal.columns = columns;
+				terminal.rows = rows;
+				terminal.resize();
+				assert.ok(viewport()[0].includes("READY"));
+				assert.equal(overlayHandle.getBounds().width, columns);
+			}
+
+			await emit("agent_start");
+			assert.ok(viewport()[0].includes("RUNNING"));
+			await emit("tool_execution_start", { toolName: "bash" });
+			assert.ok(line().includes("bash"));
+			await emit("message_end", { message: { role: "assistant", stopReason: "error", errorMessage: "429" } });
+			await emit("agent_settled", { aborted: false });
+			assert.ok(viewport()[0].includes("ERROR"));
+			await emit("agent_start");
+			await emit("agent_settled", { aborted: true });
+			assert.ok(viewport()[0].includes("STOPPED"));
+
+			const dialog = new Text("MODEL PICKER", 0, 0);
+			const dialogHandle = showOverlay(dialog, { anchor: "center", width: 40 });
+			assert.equal(tui.getFocusedComponent(), dialog);
+			await emit("thinking_level_select", { level: "low" });
+			assert.equal(tui.getFocusedComponent(), dialog);
+			dialogHandle.hide();
+			assert.equal(tui.getFocusedComponent(), editor);
+
+			await commands.get("topbar").handler("off", ctx);
+			assert.equal(tui.hasOverlayEntries, false, "Off removes overlay so TUI mode can switch");
+			assert.deepEqual(overlay.render(200), []);
+			await commands.get("topbar").handler("on", ctx);
+			assert.ok(viewport()[0].includes("STOPPED"));
+			widget.dispose();
+			assert.equal(tui.hasOverlayEntries, false);
+			await emit("session_start");
+			assert.ok(viewport()[0].includes("STOPPED"));
+			await commands.get("topbar").handler("off", ctx);
+			assert.equal(tui.hasOverlayEntries, false, "Remount must not leave duplicate overlays");
+		} finally {
+			await emit("session_shutdown");
+			assert.equal(tui.hasOverlayEntries, false);
+			tui.stop();
+		}
+	});
+}
