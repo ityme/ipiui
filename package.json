@@ -1,7 +1,7 @@
 {
   "name": "ipiui",
   "version": "0.1.0",
-  "description": "Pi Top Floating Status Bar Extension",
+  "description": "Pi rainbow status row above the editor with a bold green prompt",
   "type": "module",
   "main": "index.ts",
   "keywords": [
@@ -14,7 +14,8 @@
     ]
   },
   "scripts": {
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "check": "node scripts/check.mjs"
   },
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "*",

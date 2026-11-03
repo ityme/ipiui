@@ -1,9 +1,18 @@
-import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import {
+	CustomEditor,
+	type ExtensionAPI,
+	type ExtensionContext,
+	type KeybindingsManager,
+	type Theme,
+} from "@earendil-works/pi-coding-agent";
 import {
 	type Component,
-	type OverlayHandle,
+	type EditorTheme,
 	type TUI,
+	type TuiMouseEvent,
+	CURSOR_MARKER,
 	mixColors,
+	renderFakeCursor,
 	rgbColor,
 	stripTerminalSequences,
 	truncateToWidth,
@@ -14,22 +23,43 @@ export interface TopBarState {
 	status: "idle" | "running" | "error" | "aborted";
 	errorMessage?: string;
 	startTime?: number;
-	durationMs?: number;
 	modelId?: string;
-	provider?: string;
 	thinkingLevel?: string;
 	activeTool?: string;
+	gitBranch?: string | null;
+	cwd?: string;
 	visible: boolean;
+	usage?: UsageTotals;
+}
+
+export interface UsageTotals {
+	input: number;
+	output: number;
+	total: number;
+	cost: number;
+}
+
+export function collectUsage(entries: ReturnType<ExtensionContext["sessionManager"]["getEntries"]>): UsageTotals {
+	const totals = { input: 0, output: 0, total: 0, cost: 0 };
+	for (const entry of entries) {
+		let usage;
+		if (entry.type === "usage") usage = entry.usage;
+		else if (entry.type === "message" && (entry.message.role === "assistant" || entry.message.role === "toolResult")) {
+			usage = entry.message.usage;
+		} else if (entry.type === "compaction" || entry.type === "branch_summary") usage = entry.usage;
+		if (!usage) continue;
+		totals.input += usage.input;
+		totals.output += usage.output;
+		// Reasoning tokens are already included in output; never add them twice.
+		totals.total += usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+		totals.cost += usage.cost.total;
+	}
+	return totals;
 }
 
 const RAINBOW_STOPS = [
-	rgbColor(255, 145, 158),
-	rgbColor(255, 195, 112),
-	rgbColor(237, 232, 126),
-	rgbColor(133, 226, 177),
-	rgbColor(119, 213, 244),
-	rgbColor(172, 180, 255),
-	rgbColor(225, 160, 239),
+	rgbColor(255, 145, 158), rgbColor(255, 195, 112), rgbColor(237, 232, 126),
+	rgbColor(133, 226, 177), rgbColor(119, 213, 244), rgbColor(172, 180, 255), rgbColor(225, 160, 239),
 ];
 const RAINBOW_INK = rgbColor(24, 28, 44);
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -40,86 +70,66 @@ export function rainbowBackground(column: number, width: number) {
 	return mixColors(RAINBOW_STOPS[index], RAINBOW_STOPS[index + 1], position - index, "srgb");
 }
 
-export class TopStatusBarComponent implements Component {
-	private state: TopBarState;
-	private theme: Theme;
-	private context: ExtensionContext;
+function singleLine(text: string): string {
+	return stripTerminalSequences(text).replace(/[\x00-\x1f\x7f-\x9f]/g, " ").replace(/ +/g, " ").trim();
+}
 
-	constructor(state: TopBarState, theme: Theme, context: ExtensionContext) {
-		this.state = state;
-		this.theme = theme;
+function shortCount(value: number): string {
+	if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+	if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
+	return String(value);
+}
+
+export class TopStatusBarComponent implements Component {
+	constructor(private state: TopBarState, private theme: Theme, private context: ExtensionContext) {}
+
+	updateContext(context: ExtensionContext) {
 		this.context = context;
 	}
 
-	updateState(state: TopBarState, theme?: Theme) {
-		this.state = state;
-		if (theme) {
-			this.theme = theme;
-		}
-	}
-
 	render(width: number): string[] {
-		if (!this.state.visible || width <= 0) {
-			return [];
-		}
-
-		const th = this.theme;
+		if (!this.state.visible || width <= 0) return [];
 		const st = this.state;
-
-		let badge = "  ● READY  ";
+		let status = "READY";
 		if (st.status === "running") {
 			const elapsed = st.startTime ? Math.floor((Date.now() - st.startTime) / 1000) : 0;
-			badge = `  ▶ RUNNING ${elapsed}s  `;
-		} else if (st.status === "error") {
-			badge = "  ! ERROR  ";
-		} else if (st.status === "aborted") {
-			badge = "  ■ STOPPED  ";
+			status = `RUNNING ${elapsed}s${st.activeTool ? ` ${singleLine(st.activeTool)}` : ""}`;
+		} else if (st.status === "error") status = "ERROR";
+		else if (st.status === "aborted") status = "STOPPED";
+
+		const usage = st.usage ?? { input: 0, output: 0, total: 0, cost: 0 };
+		const model = singleLine(st.modelId?.split("/").pop() || "no-model");
+		const cwd = singleLine(st.cwd ?? this.context.cwd ?? "?");
+		let context = "ctx ?";
+		const contextUsage = this.context.getContextUsage();
+		if (contextUsage && contextUsage.tokens !== null && contextUsage.contextWindow > 0) {
+			context = `ctx ${shortCount(contextUsage.tokens)}/${shortCount(contextUsage.contextWindow)} (${Math.round(contextUsage.percent ?? contextUsage.tokens / contextUsage.contextWindow * 100)}%)`;
 		}
-
-		const segments: string[] = [];
-		if (st.status === "running" && st.activeTool) {
-			segments.push(`Tool ${st.activeTool}`);
+		const parts = [
+			model, st.thinkingLevel ?? "off", `↑${shortCount(usage.input)}`, `↓${shortCount(usage.output)}`,
+			`Σ${shortCount(usage.total)}`, `$${usage.cost.toFixed(3)}`, context,
+			singleLine(st.gitBranch ?? "no-git"), cwd,
+		];
+		const prefix = `──── ${status} `;
+		const fit = () => prefix + parts.join(" · ") + " ────";
+		if (visibleWidth(fit()) > width) {
+			parts[0] = truncateToWidth(model, Math.max(8, Math.min(24, Math.floor(width * 0.2))), "…");
+			parts[8] = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
 		}
-
-		const modelDisplay = st.modelId
-			? `${st.provider ? `${st.provider}/` : ""}${st.modelId}`
-			: "no-model";
-		segments.push(modelDisplay);
-		segments.push(`Think ${st.thinkingLevel ?? "off"}`);
-
-		// 上下文 Token 使用
-		try {
-			const usage = this.context.getContextUsage();
-			if (usage && usage.tokens !== null && usage.contextWindow > 0) {
-				const pct = Math.round((usage.tokens / usage.contextWindow) * 100);
-				const kTokens = (usage.tokens / 1000).toFixed(1);
-				const kWindow = Math.round(usage.contextWindow / 1000);
-				segments.push(`Context ${kTokens}k/${kWindow}k (${pct}%)`);
-			}
-		} catch {
-			// ignore usage calculation errors
-		}
-
-		// 错误信息显示（若是错误退出）
+		// The first fields always survive: status, model, thinking. Drop trailing details first.
+		while (parts.length > 2 && visibleWidth(fit()) > width) parts.pop();
 		if (st.status === "error" && st.errorMessage) {
-			const cleanErr = st.errorMessage.replace(/\r?\n/g, " ").trim();
-			segments.unshift(`Reason: ${cleanErr}`);
-		} else if (st.status === "aborted") {
-			segments.unshift("Interrupted by user");
+			const reason = ` · ${singleLine(st.errorMessage)}`;
+			if (visibleWidth(fit() + reason) <= width) parts.push(singleLine(st.errorMessage));
 		}
-
-		// Truncate before applying color so the text and trailing space share one gradient.
-		const text = stripTerminalSequences(truncateToWidth(badge + segments.join("  │  "), width, "…"));
+		const text = stripTerminalSequences(truncateToWidth(fit(), width, "…"));
 		const padded = text + " ".repeat(Math.max(0, width - visibleWidth(text)));
-		const badgeWidth = visibleWidth(badge);
+		const prefixWidth = visibleWidth(prefix);
 		let line = "";
 		let column = 0;
 		for (const { segment } of graphemes.segment(padded)) {
-			// Style whole graphemes: splitting emoji/CJK would corrupt terminal columns.
-			line += th.style(segment, {
-				fg: RAINBOW_INK,
-				bg: rainbowBackground(column, width),
-				bold: column < badgeWidth,
+			line += this.theme.style(segment, {
+				fg: RAINBOW_INK, bg: rainbowBackground(column, width), bold: column < prefixWidth,
 			});
 			column += visibleWidth(segment);
 		}
@@ -127,195 +137,183 @@ export class TopStatusBarComponent implements Component {
 	}
 
 	invalidate(): void {}
-	dispose(): void {}
+}
+
+/** Keep Pi's editor, cursor markers, completion and shortcuts; reserve a two-column prompt gutter. */
+export class GreenPromptEditor extends CustomEditor {
+	private bottomBorder = "";
+
+	constructor(tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager, private getTheme: () => Theme) {
+		super(tui, editorTheme, keybindings, { paddingX: 0, embedWorkingStatus: false });
+	}
+
+	protected renderBottomBorder(width: number, hiddenLineCount: number): string {
+		this.bottomBorder = super.renderBottomBorder(width, hiddenLineCount);
+		return this.bottomBorder;
+	}
+
+	render(width: number): string[] {
+		// Pi's word wrapper cannot fit wide graphemes into a one-column content area.
+		if (width < 6) {
+			if (width <= 0) return [];
+			const border = this.borderColor("─".repeat(width));
+			return [border, (this.focused ? CURSOR_MARKER : "") + renderFakeCursor(" ") + " ".repeat(width - 1), border];
+		}
+		const lines = super.render(width - 2);
+		const bottom = lines.findIndex((line, index) => index > 1 && line === this.bottomBorder);
+		const prompt = this.getTheme().style(">", { fg: "success", bold: true }) + " ";
+		return lines.map((line, index) => {
+			if (index === 0 || index === bottom) return line + this.borderColor("──");
+			return (index === 1 ? prompt : "  ") + line;
+		});
+	}
+
+	handleMouse(event: TuiMouseEvent) {
+		if (event.width < 6) return { handled: true, focus: true };
+		return super.handleMouse({
+			...event, x: Math.max(0, event.x - 2), width: event.width - 2,
+		});
+	}
 }
 
 export default function (pi: ExtensionAPI) {
-	const state: TopBarState = {
-		status: "idle",
-		visible: true,
-	};
-
-	let topBarComponent: TopStatusBarComponent | null = null;
+	const state: TopBarState = { status: "idle", visible: true };
 	let currentContext: ExtensionContext | null = null;
 	let tuiInstance: TUI | null = null;
-	let overlayHandle: OverlayHandle | null = null;
-	let timer: ReturnType<typeof setInterval> | null = null;
-
-	const removeOverlay = () => {
-		overlayHandle?.hide();
-		overlayHandle = null;
-	};
-
-	const refreshWidget = () => {
-		if (!currentContext || currentContext.mode !== "tui" || !topBarComponent || !tuiInstance) return;
-		if (state.visible && !overlayHandle) {
-			overlayHandle = tuiInstance.showOverlay(topBarComponent, {
-				anchor: "top-left",
-				row: 0,
-				col: 0,
-				width: "100%",
-				maxHeight: 1,
-				margin: 0,
-				nonCapturing: true,
-			});
-		} else if (!state.visible) {
-			removeOverlay();
-		}
-		topBarComponent.invalidate();
-		tuiInstance.requestRender();
-	};
-
-	// 运行计时器
-	const startTimer = () => {
-		if (timer) clearInterval(timer);
-		timer = setInterval(() => {
-			if (state.status === "running") {
-				refreshWidget();
-			}
-		}, 1000);
-	};
+	let bar: TopStatusBarComponent | null = null;
+	let stopBranchWatch: (() => void) | undefined;
+	let timer: ReturnType<typeof setInterval> | undefined;
+	const activeTools = new Map<string, string>();
+	let lastAssistantFailed = false;
 
 	const stopTimer = () => {
-		if (timer) {
-			clearInterval(timer);
-			timer = null;
-		}
+		if (timer) clearInterval(timer);
+		timer = undefined;
+	};
+	const redraw = () => {
+		bar?.invalidate();
+		tuiInstance?.requestRender();
+	};
+	const sync = (ctx: ExtensionContext, usage = false) => {
+		currentContext = ctx;
+		state.modelId = ctx.model?.id;
+		state.thinkingLevel = ctx.thinkingLevel;
+		state.cwd = ctx.cwd;
+		bar?.updateContext(ctx);
+		if (usage) state.usage = collectUsage(ctx.sessionManager.getEntries());
 	};
 
-	// 1. Agent 开始执行
-	pi.on("agent_start", async (_event, ctx) => {
-		currentContext = ctx;
-		state.status = "running";
-		state.startTime = Date.now();
+	pi.on("session_start", (_event, ctx) => {
+		stopTimer();
+		stopBranchWatch?.();
+		state.status = ctx.isIdle() ? "idle" : "running";
 		state.errorMessage = undefined;
+		state.startTime = state.status === "running" ? Date.now() : undefined;
 		state.activeTool = undefined;
-		state.modelId = ctx.model?.id;
-		state.provider = ctx.model?.provider;
-		state.thinkingLevel = ctx.thinkingLevel;
-		startTimer();
-		refreshWidget();
-	});
-
-	// 2. 观察工具执行
-	pi.on("tool_execution_start", async (event, ctx) => {
-		currentContext = ctx;
-		if (state.status === "running") {
-			state.activeTool = event.toolName;
-			refreshWidget();
-		}
-	});
-
-	pi.on("tool_execution_end", async (_event, ctx) => {
-		currentContext = ctx;
-		if (state.status === "running") {
-			state.activeTool = undefined;
-			refreshWidget();
-		}
-	});
-
-	// 3. 错误检测：捕捉 Assistant 消息中的错误信息或中断
-	pi.on("message_end", async (event, _ctx) => {
-		const msg = event.message as any;
-		if (msg && msg.role === "assistant") {
-			if (msg.stopReason === "error" || msg.errorMessage) {
-				state.status = "error";
-				state.errorMessage = msg.errorMessage || "Agent execution failed";
-			}
-		}
-	});
-
-	// 4. Agent 完成/退出到提示词输入行
-	pi.on("agent_settled", async (event, ctx) => {
-		currentContext = ctx;
-		stopTimer();
-		if (state.startTime) {
-			state.durationMs = Date.now() - state.startTime;
-		}
-
-		if (event.aborted) {
-			state.status = "aborted";
-			state.errorMessage = "User interrupted";
-		} else if (state.status !== "error") {
-			state.status = "idle";
-			state.errorMessage = undefined;
-		}
-
-		state.activeTool = undefined;
-		state.modelId = ctx.model?.id;
-		state.provider = ctx.model?.provider;
-		state.thinkingLevel = ctx.thinkingLevel;
-		refreshWidget();
-	});
-
-	// 5. 模型与思考等级变更监听
-	pi.on("model_select", async (event, ctx) => {
-		currentContext = ctx;
-		state.modelId = event.model.id;
-		state.provider = event.model.provider;
-		refreshWidget();
-	});
-
-	pi.on("thinking_level_select", async (event, ctx) => {
-		currentContext = ctx;
-		state.thinkingLevel = event.level;
-		refreshWidget();
-	});
-
-	// 6. 会话初始化
-	pi.on("session_start", async (_event, ctx) => {
-		currentContext = ctx;
-		state.modelId = ctx.model?.id;
-		state.provider = ctx.model?.provider;
-		state.thinkingLevel = ctx.thinkingLevel;
-
+		activeTools.clear();
+		lastAssistantFailed = false;
+		sync(ctx, true);
 		if (ctx.mode !== "tui") return;
-		// The empty widget owns overlay cleanup and supplies Pi's TUI/theme.
-		// Its slot renders no lines; only the viewport-relative overlay is visible.
-		ctx.ui.setWidget("ipiui_status_bar", (tui, theme) => {
-			removeOverlay();
-			tuiInstance = tui;
-			topBarComponent = new TopStatusBarComponent(state, theme, ctx);
-			refreshWidget();
-			return {
-				render: () => [],
-				invalidate: () => topBarComponent?.invalidate(),
-				dispose: () => {
-					stopTimer();
-					removeOverlay();
-					topBarComponent = null;
-					tuiInstance = null;
-				},
+		ctx.ui.setWorkingVisible(false);
+		ctx.ui.setFooter((_tui, _theme, footerData) => {
+			state.gitBranch = footerData.getGitBranch();
+			const unsubscribe = footerData.onBranchChange(() => {
+				state.gitBranch = footerData.getGitBranch();
+				redraw();
+			});
+			let disposed = false;
+			stopBranchWatch = () => {
+				if (!disposed) unsubscribe();
+				disposed = true;
 			};
+			return { render: () => [], invalidate() {}, dispose: stopBranchWatch };
 		});
-		ctx.ui.notify("ipiui 顶部悬浮状态栏已加载", "info");
+		ctx.ui.setWidget("ipiui_status_bar", (tui, theme) => {
+			tuiInstance = tui;
+			bar = new TopStatusBarComponent(state, theme, ctx);
+			return {
+				render: (width) => bar?.render(width) ?? [],
+				invalidate: () => bar?.invalidate(),
+				dispose: () => { stopTimer(); bar = null; tuiInstance = null; },
+			};
+		}, { placement: "aboveEditor" });
+		ctx.ui.setEditorComponent((tui, theme, keybindings) =>
+			new GreenPromptEditor(tui, theme, keybindings, () => currentContext!.ui.theme));
+		redraw();
 	});
 
-	// 7. 会话关闭时清理
-	pi.on("session_shutdown", async () => {
+	pi.on("agent_start", (_event, ctx) => {
+		sync(ctx);
+		state.status = "running";
+		state.startTime ??= Date.now();
+		state.errorMessage = undefined;
+		lastAssistantFailed = false;
 		stopTimer();
-		removeOverlay();
-		topBarComponent = null;
-		tuiInstance = null;
-		currentContext = null;
+		timer = setInterval(redraw, 1000);
+		redraw();
 	});
-
-	// 8. 命令：切换悬浮条显示/隐藏
+	pi.on("tool_execution_start", (event, ctx) => {
+		sync(ctx);
+		activeTools.set(event.toolCallId, event.toolName);
+		state.activeTool = [...activeTools.values()].join(", ");
+		redraw();
+	});
+	pi.on("tool_execution_end", (event, ctx) => {
+		sync(ctx);
+		activeTools.delete(event.toolCallId);
+		state.activeTool = [...activeTools.values()].join(", ");
+		redraw();
+	});
+	pi.on("message_end", (event, ctx) => {
+		if (event.message.role === "assistant") {
+			lastAssistantFailed = event.message.stopReason === "error";
+			state.errorMessage = lastAssistantFailed ? event.message.errorMessage || "Request failed" : undefined;
+		}
+		sync(ctx, true);
+		redraw();
+	});
+	pi.on("agent_settled", (event, ctx) => {
+		stopTimer();
+		sync(ctx, true);
+		state.status = event.aborted ? "aborted" : lastAssistantFailed ? "error" : "idle";
+		state.startTime = undefined;
+		activeTools.clear();
+		state.activeTool = undefined;
+		redraw();
+	});
+	pi.on("model_select", (event, ctx) => {
+		sync(ctx);
+		state.modelId = event.model.id;
+		redraw();
+	});
+	pi.on("thinking_level_select", (event, ctx) => {
+		sync(ctx);
+		state.thinkingLevel = event.level;
+		redraw();
+	});
+	const refreshSession = (_event: unknown, ctx: ExtensionContext) => { sync(ctx, true); redraw(); };
+	pi.on("turn_end", refreshSession);
+	pi.on("session_tree", refreshSession);
+	pi.on("session_compact", refreshSession);
+	pi.on("session_shutdown", () => {
+		stopTimer();
+		stopBranchWatch?.();
+		stopBranchWatch = undefined;
+		currentContext = null;
+		bar = null;
+		tuiInstance = null;
+	});
 	pi.registerCommand("topbar", {
-		description: "切换状态栏显示/隐藏 (/topbar [on|off|toggle])",
+		description: "Toggle the status row above the editor (/topbar [on|off|toggle])",
 		handler: async (args, ctx) => {
-			currentContext = ctx;
 			const action = args.trim().toLowerCase();
-			if (action === "on") {
-				state.visible = true;
-			} else if (action === "off") {
-				state.visible = false;
-			} else {
-				state.visible = !state.visible;
+			if (!["", "on", "off", "toggle"].includes(action)) {
+				ctx.ui.notify("Usage: /topbar [on|off|toggle]", "warning");
+				return;
 			}
-
-			ctx.ui.notify(`状态栏已${state.visible ? "开启" : "关闭"}`, "info");
-			refreshWidget();
+			sync(ctx, true);
+			state.visible = action === "on" ? true : action === "off" ? false : !state.visible;
+			redraw();
 		},
 	});
 }
