@@ -1,9 +1,6 @@
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import {
 	type Component,
-	type OverlayHandle,
-	type TUI,
-	sliceByColumn,
 	truncateToWidth,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
@@ -47,19 +44,15 @@ export class TopStatusBarComponent implements Component {
 		const st = this.state;
 
 		// 1. 状态 Badge 生成
-		let badgeText = " READY ";
 		let badgeRendered = th.bg("selectedBg", th.fg("text", " ● READY "));
 
 		if (st.status === "running") {
 			const elapsed = st.startTime ? Math.floor((Date.now() - st.startTime) / 1000) : 0;
 			const timeStr = `${elapsed}s`;
-			badgeText = ` RUNNING ${timeStr} `;
 			badgeRendered = th.bg("accent", th.bold(th.fg("text", ` 🚀 RUNNING ${timeStr} `)));
 		} else if (st.status === "error") {
-			badgeText = " ERROR ";
 			badgeRendered = th.bg("error", th.bold(th.fg("text", " ✖ ERROR ")));
 		} else if (st.status === "aborted") {
-			badgeText = " STOPPED ";
 			badgeRendered = th.bg("warning", th.bold(th.fg("text", " ⏹ STOPPED ")));
 		}
 
@@ -118,7 +111,6 @@ export class TopStatusBarComponent implements Component {
 		for (const seg of segments) {
 			const segWidth = visibleWidth(seg);
 			if (usedWidth + sepVisWidth + segWidth + 2 > width) {
-				// 放不下了，截断退出
 				break;
 			}
 			content += separator + seg;
@@ -146,16 +138,24 @@ export default function (pi: ExtensionAPI) {
 		visible: true,
 	};
 
-	let tuiInstance: TUI | null = null;
-	let overlayHandle: OverlayHandle | null = null;
 	let topBarComponent: TopStatusBarComponent | null = null;
+	let currentContext: ExtensionContext | null = null;
 	let timer: NodeJS.Timeout | null = null;
 
-	const requestRender = () => {
-		if (tuiInstance) {
-			topBarComponent?.invalidate();
-			tuiInstance.requestRender();
-		}
+	const refreshWidget = () => {
+		if (!currentContext || currentContext.mode !== "tui") return;
+		currentContext.ui.setWidget(
+			"ipiui_status_bar",
+			(_tui, theme) => {
+				if (!topBarComponent) {
+					topBarComponent = new TopStatusBarComponent(state, theme, currentContext!);
+				} else {
+					topBarComponent.updateState(state, theme);
+				}
+				return topBarComponent;
+			},
+			{ placement: "aboveEditor" }
+		);
 	};
 
 	// 运行计时器
@@ -163,7 +163,7 @@ export default function (pi: ExtensionAPI) {
 		if (timer) clearInterval(timer);
 		timer = setInterval(() => {
 			if (state.status === "running") {
-				requestRender();
+				refreshWidget();
 			}
 		}, 1000);
 	};
@@ -175,10 +175,9 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 
-	// --- 状态监听 ---
-
 	// 1. Agent 开始执行
 	pi.on("agent_start", async (_event, ctx) => {
+		currentContext = ctx;
 		state.status = "running";
 		state.startTime = Date.now();
 		state.errorMessage = undefined;
@@ -187,21 +186,23 @@ export default function (pi: ExtensionAPI) {
 		state.provider = ctx.model?.provider;
 		state.thinkingLevel = ctx.thinkingLevel;
 		startTimer();
-		requestRender();
+		refreshWidget();
 	});
 
 	// 2. 观察工具执行
-	pi.on("tool_execution_start", async (event, _ctx) => {
+	pi.on("tool_execution_start", async (event, ctx) => {
+		currentContext = ctx;
 		if (state.status === "running") {
 			state.activeTool = event.toolName;
-			requestRender();
+			refreshWidget();
 		}
 	});
 
-	pi.on("tool_execution_end", async (_event, _ctx) => {
+	pi.on("tool_execution_end", async (_event, ctx) => {
+		currentContext = ctx;
 		if (state.status === "running") {
 			state.activeTool = undefined;
-			requestRender();
+			refreshWidget();
 		}
 	});
 
@@ -218,6 +219,7 @@ export default function (pi: ExtensionAPI) {
 
 	// 4. Agent 完成/退出到提示词输入行
 	pi.on("agent_settled", async (event, ctx) => {
+		currentContext = ctx;
 		stopTimer();
 		if (state.startTime) {
 			state.durationMs = Date.now() - state.startTime;
@@ -235,69 +237,46 @@ export default function (pi: ExtensionAPI) {
 		state.modelId = ctx.model?.id;
 		state.provider = ctx.model?.provider;
 		state.thinkingLevel = ctx.thinkingLevel;
-		requestRender();
+		refreshWidget();
 	});
 
 	// 5. 模型与思考等级变更监听
-	pi.on("model_select", async (event, _ctx) => {
+	pi.on("model_select", async (event, ctx) => {
+		currentContext = ctx;
 		state.modelId = event.model.id;
 		state.provider = event.model.provider;
-		requestRender();
+		refreshWidget();
 	});
 
-	pi.on("thinking_level_select", async (event, _ctx) => {
+	pi.on("thinking_level_select", async (event, ctx) => {
+		currentContext = ctx;
 		state.thinkingLevel = event.level;
-		requestRender();
+		refreshWidget();
 	});
 
-	// 6. 会话初始化时挂载 Overlay
+	// 6. 会话初始化
 	pi.on("session_start", async (_event, ctx) => {
-		if (ctx.mode !== "tui") return;
-
+		currentContext = ctx;
 		state.modelId = ctx.model?.id;
 		state.provider = ctx.model?.provider;
 		state.thinkingLevel = ctx.thinkingLevel;
 
-		// 利用 widget factory 获取 tui 与 theme 实例
-		ctx.ui.setWidget("__ipiui_topbar_mount", (tui, theme) => {
-			tuiInstance = tui;
-
-			if (!overlayHandle) {
-				topBarComponent = new TopStatusBarComponent(state, theme, ctx);
-				overlayHandle = tui.showOverlay(topBarComponent, {
-					anchor: "top-center",
-					width: "100%",
-					offsetY: 0,
-					nonCapturing: true,
-				});
-			} else {
-				topBarComponent?.updateState(state, theme);
-			}
-
-			// 返回空组件，不在原 widget 槽位占用多余高度
-			return {
-				render: () => [],
-				invalidate: () => {},
-				dispose: () => {},
-			};
-		});
+		ctx.ui.notify("ipiui 状态栏扩展已成功加载", "info");
+		refreshWidget();
 	});
 
 	// 7. 会话关闭时清理
 	pi.on("session_shutdown", async () => {
 		stopTimer();
-		if (overlayHandle) {
-			overlayHandle.hide();
-			overlayHandle = null;
-		}
 		topBarComponent = null;
-		tuiInstance = null;
+		currentContext = null;
 	});
 
 	// 8. 命令：切换悬浮条显示/隐藏
 	pi.registerCommand("topbar", {
-		description: "Toggle top floating status bar visibility (/topbar [on|off|toggle])",
+		description: "切换状态栏显示/隐藏 (/topbar [on|off|toggle])",
 		handler: async (args, ctx) => {
+			currentContext = ctx;
 			const action = args.trim().toLowerCase();
 			if (action === "on") {
 				state.visible = true;
@@ -307,8 +286,8 @@ export default function (pi: ExtensionAPI) {
 				state.visible = !state.visible;
 			}
 
-			ctx.ui.notify(`Top status bar: ${state.visible ? "ON" : "OFF"}`, "info");
-			requestRender();
+			ctx.ui.notify(`状态栏已${state.visible ? "开启" : "关闭"}`, "info");
+			refreshWidget();
 		},
 	});
 }

@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "description": "Pi Top Floating Status Bar Extension",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "index.ts",
   "keywords": [
     "pi-package",
     "pi-extension"
   ],
   "pi": {
     "extensions": [
-      "./src/index.ts"
+      "./index.ts"
     ]
   },
   "scripts": {
