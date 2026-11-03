@@ -1,7 +1,7 @@
 {
   "name": "ipiui",
   "version": "0.1.0",
-  "description": "Pi rainbow status row above the editor with a bold green prompt",
+  "description": "Pi rainbow status row and opt-in split-pane title aggregation",
   "type": "module",
   "main": "index.ts",
   "keywords": [

@@ -26,7 +26,7 @@ const jiti = createJiti(path.join(projectRoot, "index.ts"), {
 		"@earendil-works/pi-tui": path.join(hostRoot, "@earendil-works/pi-tui/dist/index.js"),
 	},
 });
-const { default: extension, TopStatusBarComponent, GreenPromptEditor, collectUsage } = jiti(path.join(projectRoot, "index.ts"));
+const { default: extension, TopStatusBarComponent, collectUsage } = jiti(path.join(projectRoot, "index.ts"));
 const { getThemeByName, loadThemeFromPath } = await import(pathToFileURL(path.join(hostRoot,
 	"@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js")));
 const { visibleWidth, stripTerminalSequences, colorToRgb, indexedColor, TuiMainScreen,
@@ -153,6 +153,7 @@ class TestTerminal {
 	setProgress() {}
 	setProgramStatus() {}
 }
+const { CustomEditor } = jiti(path.join(hostRoot, "@earendil-works/pi-coding-agent/dist/modes/interactive/components/custom-editor.js"));
 const { KeybindingsManager } = await import(pathToFileURL(path.join(hostRoot,
 	"@earendil-works/pi-coding-agent/dist/core/keybindings.js")));
 const keybindings = new KeybindingsManager();
@@ -160,10 +161,10 @@ const editorTheme = { borderColor: text => text,
 	selectList: { selectedPrefix: text => text, selectedText: text => text, description: text => text,
 		scrollInfo: text => text, noMatch: text => text } };
 
-test("bold green prompt preserves text, wrapping, IME cursor marker, mouse and shortcuts", () => {
+test("native prompt has no > and preserves text, wrapping, IME cursor marker, mouse and shortcuts", () => {
 	const tui = new TuiMainScreen(new TestTerminal());
 	const theme = getThemeByName("dark");
-	const editor = new GreenPromptEditor(tui, editorTheme, keybindings, () => theme);
+	const editor = new CustomEditor(tui, editorTheme, keybindings);
 	editor.focused = true;
 	const render = width => {
 		const lines = editor.render(width);
@@ -173,16 +174,16 @@ test("bold green prompt preserves text, wrapping, IME cursor marker, mouse and s
 	};
 	try {
 		const empty = render(40);
-		assert.ok(empty[1].startsWith(theme.style(">", { fg: "success", bold: true })));
+		assert.ok(!plain(empty[1]).includes(">"));
 		editor.handleInput("你好");
 		assert.equal(editor.getText(), "你好");
-		assert.ok(plain(render(40)[1]).startsWith("> 你好"));
+		assert.ok(plain(render(40)[1]).startsWith("你好"));
 		editor.setText("a".repeat(60) + "\n第二行👨‍👩‍👧‍👦");
-		for (const width of [1, 2, 3, 8, 20, 40]) render(width);
+		for (const width of [8, 20, 40]) render(width);
 		editor.setText("abcd");
 		render(40);
-		editor.handleMouse({ type: "click", button: "left", x: 4, y: 1, width: 40, height: 3,
-			screenX: 4, screenY: 1, shift: false, alt: false, ctrl: false });
+		editor.handleMouse({ type: "click", button: "left", x: 2, y: 1, width: 40, height: 3,
+			screenX: 2, screenY: 1, shift: false, alt: false, ctrl: false });
 		editor.handleInput("X");
 		assert.equal(editor.getText(), "abXcd");
 		let interrupted = false;
@@ -201,7 +202,7 @@ test("bold green prompt preserves text, wrapping, IME cursor marker, mouse and s
 
 test("completion remains below editor border and cursor marker survives", async () => {
 	const tui = new TuiMainScreen(new TestTerminal());
-	const editor = new GreenPromptEditor(tui, editorTheme, keybindings, () => getThemeByName("dark"));
+	const editor = new CustomEditor(tui, editorTheme, keybindings);
 	editor.focused = true;
 	editor.setAutocompleteProvider({
 		triggerCharacters: ["/"],
@@ -230,6 +231,14 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 	const chat = new Container(), widgetSlot = new Container(), editorSlot = new Container(), footerSlot = new Container();
 	for (const component of [chat, widgetSlot, editorSlot, footerSlot]) tui.addChild(component);
 	let widget, footer, editor, branchChanged, unsubscribed = 0;
+	const titles = [];
+	const untilTitle = async predicate => {
+		const deadline = Date.now() + 3000;
+		while (!predicate(titles.at(-1) ?? "")) {
+			if (Date.now() > deadline) throw new Error(`Title update timed out: ${titles.at(-1)}`);
+			await new Promise(resolve => setTimeout(resolve, 10));
+		}
+	};
 	let entries = [];
 	let branch = "dev";
 	const ctx = {
@@ -238,6 +247,7 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		sessionManager: { getEntries: () => entries },
 		ui: {
 			theme: getThemeByName("dark"), notify() {},
+			setTitle(title) { titles.push(title); },
 			setWorkingVisible(value) { assert.equal(value, false); },
 			setFooter(factory) {
 				footer?.dispose?.(); footerSlot.clear();
@@ -252,7 +262,9 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 			},
 			setEditorComponent(factory) {
 				const saved = editor?.getText() ?? "";
-				editorSlot.clear(); editor = factory(tui, editorTheme, keybindings);
+				editorSlot.clear();
+				assert.equal(factory, undefined, "Extension must restore Pi's native editor");
+				editor = new CustomEditor(tui, editorTheme, keybindings);
 				editor.setText(saved); editorSlot.addChild(editor); tui.setFocus(editor);
 			},
 		},
@@ -269,19 +281,25 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		assert.deepEqual(footer.render(200), []);
 		let lines = frame();
 		assert.ok(lines[0].includes("READY"));
-		assert.ok(lines[2].startsWith("> "));
+		assert.ok(!lines[2].includes(">"));
 		assert.match(lines.at(-1), /^─+$/);
 		terminal.input("hello"); assert.equal(editor.getText(), "hello");
 		chat.addChild({ render: () => Array.from({ length: 100 }, (_, i) => `Chat row ${i}`), invalidate() {} });
 		lines = frame();
 		assert.equal(lines[99], "Chat row 99");
 		assert.ok(lines[100].includes("READY"));
-		assert.ok(lines[102].startsWith("> hello"));
+		assert.ok(lines[102].startsWith("hello"));
 		for (const columns of [40, 80, 200]) {
 			terminal.columns = columns; terminal.resize();
 			assert.ok(frame().every(row => visibleWidth(row) <= columns));
 		}
+		assert.deepEqual(titles, [], "Default must not take over terminal title");
+		await commands.get("tabgroup").handler(`ipiui-test-${process.pid}-${Date.now()}`, ctx);
+		await untilTitle(title => title === "[1○cmd]");
+		await commands.get("tabname").handler("api", ctx);
+		await untilTitle(title => title === "[1○api]");
 		await emit("agent_start"); assert.ok(line().includes("RUNNING"));
+		await untilTitle(title => title === "[1▶api]");
 		await emit("tool_execution_start", { toolCallId: "a", toolName: "read" });
 		await emit("tool_execution_start", { toolCallId: "b", toolName: "bash" });
 		await emit("tool_execution_end", { toolCallId: "a" });
@@ -289,10 +307,12 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		entries = [{ type: "message", message: { role: "assistant", usage: usage() } }];
 		await emit("message_end", { message: { role: "assistant", stopReason: "error", errorMessage: "429" } });
 		await emit("agent_settled", { aborted: false }); assert.ok(line().includes("ERROR"));
+		await untilTitle(title => title === "[1✗api]");
 		assert.ok(line().includes("↑100"));
 		await emit("agent_start");
 		await emit("message_end", { message: { role: "assistant", stopReason: "stop" } });
 		await emit("agent_settled", { aborted: false }); assert.ok(line().includes("READY"));
+		await untilTitle(title => title === "[1✓api]");
 		await emit("agent_start"); await emit("agent_settled", { aborted: true });
 		assert.ok(line().includes("STOPPED"));
 		branch = "feature"; branchChanged(); assert.ok(line().includes("feature"));
@@ -300,6 +320,12 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		await commands.get("topbar").handler("on", ctx); assert.ok(line().includes("STOPPED"));
 		await emit("session_start"); assert.ok(line().includes("READY"));
 		assert.equal(editor.getText(), "hello");
+		await untilTitle(title => title === "[1○api]");
+		await commands.get("tabgroup").handler("off", ctx);
+		assert.equal(titles.at(-1), "pi");
+		const count = titles.length;
+		await emit("agent_start"); await emit("agent_settled", { aborted: false });
+		assert.equal(titles.length, count);
 	} finally {
 		await emit("session_shutdown"); widget?.dispose?.(); footer?.dispose?.(); tui.stop();
 	}

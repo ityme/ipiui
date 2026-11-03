@@ -1,18 +1,9 @@
-import {
-	CustomEditor,
-	type ExtensionAPI,
-	type ExtensionContext,
-	type KeybindingsManager,
-	type Theme,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { TabTitleGroup, cleanTitleLabel, type TabStatus } from "./tab-title.js";
 import {
 	type Component,
-	type EditorTheme,
 	type TUI,
-	type TuiMouseEvent,
-	CURSOR_MARKER,
 	mixColors,
-	renderFakeCursor,
 	rgbColor,
 	stripTerminalSequences,
 	truncateToWidth,
@@ -139,43 +130,6 @@ export class TopStatusBarComponent implements Component {
 	invalidate(): void {}
 }
 
-/** Keep Pi's editor, cursor markers, completion and shortcuts; reserve a two-column prompt gutter. */
-export class GreenPromptEditor extends CustomEditor {
-	private bottomBorder = "";
-
-	constructor(tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager, private getTheme: () => Theme) {
-		super(tui, editorTheme, keybindings, { paddingX: 0, embedWorkingStatus: false });
-	}
-
-	protected renderBottomBorder(width: number, hiddenLineCount: number): string {
-		this.bottomBorder = super.renderBottomBorder(width, hiddenLineCount);
-		return this.bottomBorder;
-	}
-
-	render(width: number): string[] {
-		// Pi's word wrapper cannot fit wide graphemes into a one-column content area.
-		if (width < 6) {
-			if (width <= 0) return [];
-			const border = this.borderColor("─".repeat(width));
-			return [border, (this.focused ? CURSOR_MARKER : "") + renderFakeCursor(" ") + " ".repeat(width - 1), border];
-		}
-		const lines = super.render(width - 2);
-		const bottom = lines.findIndex((line, index) => index > 1 && line === this.bottomBorder);
-		const prompt = this.getTheme().style(">", { fg: "success", bold: true }) + " ";
-		return lines.map((line, index) => {
-			if (index === 0 || index === bottom) return line + this.borderColor("──");
-			return (index === 1 ? prompt : "  ") + line;
-		});
-	}
-
-	handleMouse(event: TuiMouseEvent) {
-		if (event.width < 6) return { handled: true, focus: true };
-		return super.handleMouse({
-			...event, x: Math.max(0, event.x - 2), width: event.width - 2,
-		});
-	}
-}
-
 export default function (pi: ExtensionAPI) {
 	const state: TopBarState = { status: "idle", visible: true };
 	let currentContext: ExtensionContext | null = null;
@@ -185,6 +139,28 @@ export default function (pi: ExtensionAPI) {
 	let timer: ReturnType<typeof setInterval> | undefined;
 	const activeTools = new Map<string, string>();
 	let lastAssistantFailed = false;
+	let titleGroup: TabTitleGroup | undefined;
+	let groupName: string | undefined;
+	let paneLabel = "cmd";
+	let titleStatus: TabStatus = "idle";
+
+	const publishTitle = () => { void titleGroup?.update(titleStatus, paneLabel); };
+	const joinTitleGroup = async (name: string) => {
+		await titleGroup?.stop();
+		titleGroup = new TabTitleGroup({
+			onTitle: title => { if (currentContext?.mode === "tui") currentContext.ui.setTitle(title); },
+			onError: () => currentContext?.ui.notify("ipiui: title synchronization failed; use /tabgroup off and rejoin to retry", "warning"),
+		});
+		try {
+			await titleGroup.start(name, paneLabel, titleStatus);
+			groupName = name;
+		} catch (error) {
+			await titleGroup.stop();
+			titleGroup = undefined;
+			groupName = undefined;
+			throw error;
+		}
+	};
 
 	const stopTimer = () => {
 		if (timer) clearInterval(timer);
@@ -203,7 +179,7 @@ export default function (pi: ExtensionAPI) {
 		if (usage) state.usage = collectUsage(ctx.sessionManager.getEntries());
 	};
 
-	pi.on("session_start", (_event, ctx) => {
+	pi.on("session_start", async (_event, ctx) => {
 		stopTimer();
 		stopBranchWatch?.();
 		state.status = ctx.isIdle() ? "idle" : "running";
@@ -237,14 +213,17 @@ export default function (pi: ExtensionAPI) {
 				dispose: () => { stopTimer(); bar = null; tuiInstance = null; },
 			};
 		}, { placement: "aboveEditor" });
-		ctx.ui.setEditorComponent((tui, theme, keybindings) =>
-			new GreenPromptEditor(tui, theme, keybindings, () => currentContext!.ui.theme));
+		ctx.ui.setEditorComponent(undefined);
+		titleStatus = state.status === "running" ? "running" : "idle";
+		if (groupName) await joinTitleGroup(groupName);
 		redraw();
 	});
 
 	pi.on("agent_start", (_event, ctx) => {
 		sync(ctx);
 		state.status = "running";
+		titleStatus = "running";
+		publishTitle();
 		state.startTime ??= Date.now();
 		state.errorMessage = undefined;
 		lastAssistantFailed = false;
@@ -276,6 +255,8 @@ export default function (pi: ExtensionAPI) {
 		stopTimer();
 		sync(ctx, true);
 		state.status = event.aborted ? "aborted" : lastAssistantFailed ? "error" : "idle";
+		titleStatus = event.aborted ? "aborted" : lastAssistantFailed ? "error" : "done";
+		publishTitle();
 		state.startTime = undefined;
 		activeTools.clear();
 		state.activeTool = undefined;
@@ -295,13 +276,59 @@ export default function (pi: ExtensionAPI) {
 	pi.on("turn_end", refreshSession);
 	pi.on("session_tree", refreshSession);
 	pi.on("session_compact", refreshSession);
-	pi.on("session_shutdown", () => {
+	pi.on("session_shutdown", async () => {
+		await titleGroup?.stop();
+		titleGroup = undefined;
 		stopTimer();
 		stopBranchWatch?.();
 		stopBranchWatch = undefined;
 		currentContext = null;
 		bar = null;
 		tuiInstance = null;
+	});
+	pi.registerCommand("tabgroup", {
+		description: "Join a manually named split-pane title group (/tabgroup NAME|off)",
+		handler: async (args, ctx) => {
+			if (ctx.mode !== "tui") return;
+			sync(ctx);
+			const name = args.trim();
+			if (!name) {
+				ctx.ui.notify(groupName ? `Title group: ${groupName}; name: ${paneLabel}` : "Usage: /tabgroup NAME (same name in each pane), or /tabgroup off", "info");
+				return;
+			}
+			if (name === "off") {
+				await titleGroup?.stop();
+				titleGroup = undefined;
+				groupName = undefined;
+				ctx.ui.setTitle("pi");
+				ctx.ui.notify("Title group disabled", "info");
+				return;
+			}
+			if (name.length > 64 || /[\x00-\x1f\x7f]/.test(name)) {
+				ctx.ui.notify("Group must be 1–64 characters with no control characters", "warning");
+				return;
+			}
+			try {
+				await joinTitleGroup(name);
+				ctx.ui.notify(`Joined title group: ${name}. Join the same group in the other panes.`, "info");
+			} catch {
+				ctx.ui.notify("Could not join title group; check temporary-directory access", "error");
+			}
+		},
+	});
+	pi.registerCommand("tabname", {
+		description: "Set this Pi member's short title label (/tabname api)",
+		handler: async (args, ctx) => {
+			if (ctx.mode !== "tui") return;
+			sync(ctx);
+			if (!args.trim()) {
+				ctx.ui.notify(`Title name: ${paneLabel}; use /tabname NAME`, "info");
+				return;
+			}
+			paneLabel = cleanTitleLabel(args);
+			publishTitle();
+			ctx.ui.notify(`Title name: ${paneLabel}`, "info");
+		},
 	});
 	pi.registerCommand("topbar", {
 		description: "Toggle the status row above the editor (/topbar [on|off|toggle])",

@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="320" viewBox="0 0 1440 320" role="img" aria-label="Chat above a rainbow information row, a bold green prompt inside horizontal borders, and an empty area below">
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="320" viewBox="0 0 1440 320" role="img" aria-label="Chat above a rainbow information row, a native prompt without a prefix, and an empty footer">
   <defs>
     <linearGradient id="rainbow" x1="0" y1="0" x2="1" y2="0" color-interpolation="sRGB">
       <stop offset="0" stop-color="rgb(255,145,158)"/>
@@ -17,7 +17,6 @@
     <rect y="116" width="1440" height="32" fill="url(#rainbow)"/>
     <text x="12" y="138" fill="#181c2c"><tspan font-weight="700">──── READY </tspan><tspan>gemini3.8flash · high · ↑12.4k · ↓3.2k · Σ18.6k · $0.023 · ctx 15.7k/1.0M (2%) · dev · I:/ispace/ipiui ────</tspan></text>
     <path d="M0 168H1440 M0 222H1440" stroke="#667085" stroke-width="1"/>
-    <text x="12" y="202" fill="#56d885" font-weight="700">&gt;</text>
-    <text x="34" y="202" fill="#d5d9e2">Your prompt</text>
+    <text x="12" y="202" fill="#d5d9e2">Your prompt</text>
   </g>
 </svg>
