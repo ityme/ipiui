@@ -49,11 +49,11 @@ export class TopStatusBarComponent implements Component {
 		if (st.status === "running") {
 			const elapsed = st.startTime ? Math.floor((Date.now() - st.startTime) / 1000) : 0;
 			const timeStr = `${elapsed}s`;
-			badgeRendered = th.bg("accent", th.bold(th.fg("text", ` 🚀 RUNNING ${timeStr} `)));
+			badgeRendered = th.bg("selectedBg", th.bold(th.fg("accent", ` 🚀 RUNNING ${timeStr} `)));
 		} else if (st.status === "error") {
-			badgeRendered = th.bg("error", th.bold(th.fg("text", " ✖ ERROR ")));
+			badgeRendered = th.bg("toolErrorBg", th.bold(th.fg("error", " ✖ ERROR ")));
 		} else if (st.status === "aborted") {
-			badgeRendered = th.bg("warning", th.bold(th.fg("text", " ⏹ STOPPED ")));
+			badgeRendered = th.bg("selectedBg", th.bold(th.fg("warning", " ⏹ STOPPED ")));
 		}
 
 		// 2. 详细信息段 (Segments)
@@ -83,9 +83,9 @@ export class TopStatusBarComponent implements Component {
 		// 上下文 Token 使用
 		try {
 			const usage = this.context.getContextUsage();
-			if (usage && usage.totalTokens && usage.contextWindow) {
-				const pct = Math.round((usage.totalTokens / usage.contextWindow) * 100);
-				const kTokens = (usage.totalTokens / 1000).toFixed(1);
+			if (usage && usage.tokens !== null && usage.contextWindow > 0) {
+				const pct = Math.round((usage.tokens / usage.contextWindow) * 100);
+				const kTokens = (usage.tokens / 1000).toFixed(1);
 				const kWindow = Math.round(usage.contextWindow / 1000);
 				segments.push(`${th.fg("dim", "📊")} ${th.fg("muted", `${kTokens}k/${kWindow}k (${pct}%)`)}`);
 			}
