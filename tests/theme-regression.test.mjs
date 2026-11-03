@@ -54,10 +54,32 @@ for (const themeName of ["dark", "light", "system"]) {
 				assert.equal(lines.length, 1);
 				assert.equal(visibleWidth(lines[0]), width);
 				if (width >= 100) assert.ok(plain(lines[0]).includes(label));
+			if (width >= 100 && status === "idle") assert.ok(plain(lines[0]).includes("✓ READY"));
+			if (width >= 100 && status === "error") assert.ok(plain(lines[0]).includes("✗ ERROR"));
+			if (width >= 100 && status === "aborted") assert.ok(plain(lines[0]).includes("■ STOPPED"));
 			}
 		});
 	}
 }
+
+test("running icon animates while stable status icons remain semantic", () => {
+	const theme = getThemeByName("dark");
+	const component = new TopStatusBarComponent({ status: "running", visible: true, startTime: Date.now() }, theme, context);
+	const first = plain(component.render(200)[0]).match(/──── (.) RUNNING/)?.[1];
+	let changed = false;
+	for (let i = 0; i < 8; i++) {
+		const originalNow = Date.now;
+		Date.now = () => originalNow() + i * 180;
+		const next = plain(component.render(200)[0]).match(/──── (.) RUNNING/)?.[1];
+		if (next && next !== first) changed = true;
+		Date.now = originalNow;
+	}
+	assert.equal(changed, true);
+	for (const [status, icon] of [["idle", "✓"], ["error", "✗"], ["aborted", "■"]]) {
+		const stable = new TopStatusBarComponent({ status, visible: true }, theme, context);
+		assert.ok(plain(stable.render(200)[0]).includes(`──── ${icon}`));
+	}
+});
 
 test("information order, unknown context, cumulative totals, branch and path", () => {
 	const component = new TopStatusBarComponent({ status: "idle", visible: true,
@@ -232,6 +254,14 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 	for (const component of [chat, widgetSlot, editorSlot, footerSlot]) tui.addChild(component);
 	let widget, footer, editor, branchChanged, unsubscribed = 0;
 	const titles = [];
+	const originalSetInterval = globalThis.setInterval;
+	const originalClearInterval = globalThis.clearInterval;
+	const heartbeatCallbacks = [];
+	globalThis.setInterval = (callback, delay) => {
+		if (delay === 1500) heartbeatCallbacks.push(callback);
+		return originalSetInterval(callback, delay);
+	};
+	globalThis.clearInterval = handle => originalClearInterval(handle);
 	const untilTitle = async predicate => {
 		const deadline = Date.now() + 3000;
 		while (!predicate(titles.at(-1) ?? "")) {
@@ -298,6 +328,10 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		await untilTitle(title => title === "[1○cmd]");
 		await commands.get("tabname").handler("api", ctx);
 		await untilTitle(title => title === "[1○api]");
+		assert.ok(heartbeatCallbacks.length > 0);
+		titles.push("overwritten-by-pi");
+		heartbeatCallbacks.at(-1)();
+		assert.equal(titles.at(-1), "[1○api]", "Heartbeat must reassert the last grouped title");
 		await emit("agent_start"); assert.ok(line().includes("RUNNING"));
 		await untilTitle(title => title === "[1▶api]");
 		await emit("tool_execution_start", { toolCallId: "a", toolName: "read" });
@@ -326,8 +360,15 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		const count = titles.length;
 		await emit("agent_start"); await emit("agent_settled", { aborted: false });
 		assert.equal(titles.length, count);
+		await commands.get("tabgroup").handler("off", ctx);
+		const heartbeatCount = heartbeatCallbacks.length;
+		if (heartbeatCallbacks.at(-1)) heartbeatCallbacks.at(-1)();
+		assert.equal(titles.at(-1), "pi");
+		assert.equal(heartbeatCallbacks.length, heartbeatCount);
 	} finally {
 		await emit("session_shutdown"); widget?.dispose?.(); footer?.dispose?.(); tui.stop();
+		globalThis.setInterval = originalSetInterval;
+		globalThis.clearInterval = originalClearInterval;
 	}
 	assert.ok(unsubscribed >= 2);
 });

@@ -54,6 +54,7 @@ const RAINBOW_STOPS = [
 ];
 const RAINBOW_INK = rgbColor(24, 28, 44);
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+const RUNNING_ICONS = ["◐", "◓", "◑", "◒"];
 
 export function rainbowBackground(column: number, width: number) {
 	const position = Math.max(0, Math.min(1, column / Math.max(1, width - 1))) * (RAINBOW_STOPS.length - 1);
@@ -81,12 +82,13 @@ export class TopStatusBarComponent implements Component {
 	render(width: number): string[] {
 		if (!this.state.visible || width <= 0) return [];
 		const st = this.state;
-		let status = "READY";
+		let status = "✓ READY";
 		if (st.status === "running") {
 			const elapsed = st.startTime ? Math.floor((Date.now() - st.startTime) / 1000) : 0;
-			status = `RUNNING ${elapsed}s${st.activeTool ? ` ${singleLine(st.activeTool)}` : ""}`;
-		} else if (st.status === "error") status = "ERROR";
-		else if (st.status === "aborted") status = "STOPPED";
+			const frame = RUNNING_ICONS[Math.floor(Date.now() / 180) % RUNNING_ICONS.length];
+			status = `${frame} RUNNING ${elapsed}s${st.activeTool ? ` ${singleLine(st.activeTool)}` : ""}`;
+		} else if (st.status === "error") status = "✗ ERROR";
+		else if (st.status === "aborted") status = "■ STOPPED";
 
 		const usage = st.usage ?? { input: 0, output: 0, total: 0, cost: 0 };
 		const model = singleLine(st.modelId?.split("/").pop() || "no-model");
@@ -137,23 +139,35 @@ export default function (pi: ExtensionAPI) {
 	let bar: TopStatusBarComponent | null = null;
 	let stopBranchWatch: (() => void) | undefined;
 	let timer: ReturnType<typeof setInterval> | undefined;
+	let iconTimer: ReturnType<typeof setInterval> | undefined;
 	const activeTools = new Map<string, string>();
 	let lastAssistantFailed = false;
 	let titleGroup: TabTitleGroup | undefined;
 	let groupName: string | undefined;
 	let paneLabel = "cmd";
 	let titleStatus: TabStatus = "idle";
+	let titleHeartbeat: ReturnType<typeof setInterval> | undefined;
+	let lastPublishedTitle = "";
 
+	const writeTitle = (title: string) => {
+		lastPublishedTitle = title;
+		if (currentContext?.mode === "tui") currentContext.ui.setTitle(title);
+	};
 	const publishTitle = () => { void titleGroup?.update(titleStatus, paneLabel); };
 	const joinTitleGroup = async (name: string) => {
 		await titleGroup?.stop();
 		titleGroup = new TabTitleGroup({
-			onTitle: title => { if (currentContext?.mode === "tui") currentContext.ui.setTitle(title); },
+			onTitle: writeTitle,
 			onError: () => currentContext?.ui.notify("ipiui: title synchronization failed; use /tabgroup off and rejoin to retry", "warning"),
 		});
 		try {
 			await titleGroup.start(name, paneLabel, titleStatus);
 			groupName = name;
+			if (titleHeartbeat) clearInterval(titleHeartbeat);
+			titleHeartbeat = setInterval(() => {
+				if (lastPublishedTitle && currentContext?.mode === "tui") currentContext.ui.setTitle(lastPublishedTitle);
+			}, 1500);
+			titleHeartbeat.unref();
 		} catch (error) {
 			await titleGroup.stop();
 			titleGroup = undefined;
@@ -165,6 +179,13 @@ export default function (pi: ExtensionAPI) {
 	const stopTimer = () => {
 		if (timer) clearInterval(timer);
 		timer = undefined;
+		if (iconTimer) clearInterval(iconTimer);
+		iconTimer = undefined;
+	};
+	const startIconTimer = () => {
+		if (iconTimer) clearInterval(iconTimer);
+		iconTimer = setInterval(redraw, 180);
+		iconTimer.unref();
 	};
 	const redraw = () => {
 		bar?.invalidate();
@@ -229,6 +250,7 @@ export default function (pi: ExtensionAPI) {
 		lastAssistantFailed = false;
 		stopTimer();
 		timer = setInterval(redraw, 1000);
+		startIconTimer();
 		redraw();
 	});
 	pi.on("tool_execution_start", (event, ctx) => {
@@ -278,6 +300,8 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_compact", refreshSession);
 	pi.on("session_shutdown", async () => {
 		await titleGroup?.stop();
+		if (titleHeartbeat) clearInterval(titleHeartbeat);
+		titleHeartbeat = undefined;
 		titleGroup = undefined;
 		stopTimer();
 		stopBranchWatch?.();
@@ -298,8 +322,11 @@ export default function (pi: ExtensionAPI) {
 			}
 			if (name === "off") {
 				await titleGroup?.stop();
+				if (titleHeartbeat) clearInterval(titleHeartbeat);
+				titleHeartbeat = undefined;
 				titleGroup = undefined;
 				groupName = undefined;
+				lastPublishedTitle = "";
 				ctx.ui.setTitle("pi");
 				ctx.ui.notify("Title group disabled", "info");
 				return;

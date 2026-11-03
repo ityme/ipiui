@@ -17,7 +17,7 @@ Your prompt
 
 Information order:
 
-1. Running state: `READY`, `RUNNING` with elapsed seconds and active tools, `ERROR`, or `STOPPED`.
+1. Running state: `✓ READY`, animated `◐/◓/◑/◒ RUNNING` with elapsed seconds and active tools, `✗ ERROR`, or `■ STOPPED`. The running icon advances every 180ms while an agent is active.
 2. Short model ID and thinking level.
 3. `↑` cumulative input tokens and `↓` cumulative output tokens for the session.
 4. `Σ` cumulative input + output + cache-read + cache-write tokens. Reasoning is already part of output and is not counted twice.
