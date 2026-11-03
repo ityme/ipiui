@@ -3,6 +3,9 @@ import {
 	type Component,
 	type OverlayHandle,
 	type TUI,
+	mixColors,
+	rgbColor,
+	stripTerminalSequences,
 	truncateToWidth,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
@@ -17,6 +20,24 @@ export interface TopBarState {
 	thinkingLevel?: string;
 	activeTool?: string;
 	visible: boolean;
+}
+
+const RAINBOW_STOPS = [
+	rgbColor(255, 145, 158),
+	rgbColor(255, 195, 112),
+	rgbColor(237, 232, 126),
+	rgbColor(133, 226, 177),
+	rgbColor(119, 213, 244),
+	rgbColor(172, 180, 255),
+	rgbColor(225, 160, 239),
+];
+const RAINBOW_INK = rgbColor(24, 28, 44);
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+export function rainbowBackground(column: number, width: number) {
+	const position = Math.max(0, Math.min(1, column / Math.max(1, width - 1))) * (RAINBOW_STOPS.length - 1);
+	const index = Math.min(RAINBOW_STOPS.length - 2, Math.floor(position));
+	return mixColors(RAINBOW_STOPS[index], RAINBOW_STOPS[index + 1], position - index, "srgb");
 }
 
 export class TopStatusBarComponent implements Component {
@@ -45,42 +66,26 @@ export class TopStatusBarComponent implements Component {
 		const th = this.theme;
 		const st = this.state;
 
-		// 1. 状态 Badge 生成
-		let badgeRendered = th.bg("selectedBg", th.fg("text", " ● READY "));
-
+		let badge = "  ● READY  ";
 		if (st.status === "running") {
 			const elapsed = st.startTime ? Math.floor((Date.now() - st.startTime) / 1000) : 0;
-			const timeStr = `${elapsed}s`;
-			badgeRendered = th.bg("selectedBg", th.bold(th.fg("accent", ` 🚀 RUNNING ${timeStr} `)));
+			badge = `  ▶ RUNNING ${elapsed}s  `;
 		} else if (st.status === "error") {
-			badgeRendered = th.bg("toolErrorBg", th.bold(th.fg("error", " ✖ ERROR ")));
+			badge = "  ! ERROR  ";
 		} else if (st.status === "aborted") {
-			badgeRendered = th.bg("selectedBg", th.bold(th.fg("warning", " ⏹ STOPPED ")));
+			badge = "  ■ STOPPED  ";
 		}
 
-		// 2. 详细信息段 (Segments)
 		const segments: string[] = [];
-
-		// 当前活动工具
 		if (st.status === "running" && st.activeTool) {
-			segments.push(`${th.fg("warning", "⚡")} ${th.fg("accent", st.activeTool)}`);
+			segments.push(`Tool ${st.activeTool}`);
 		}
 
-		// 模型信息
 		const modelDisplay = st.modelId
 			? `${st.provider ? `${st.provider}/` : ""}${st.modelId}`
 			: "no-model";
-		segments.push(`${th.fg("dim", "🤖")} ${th.fg("text", modelDisplay)}`);
-
-		// 思考等级
-		const thinkLevel = st.thinkingLevel ?? "off";
-		let thinkStyled = th.fg("dim", thinkLevel);
-		if (thinkLevel === "high" || thinkLevel === "max" || thinkLevel === "xhigh") {
-			thinkStyled = th.fg("accent", thinkLevel);
-		} else if (thinkLevel === "medium" || thinkLevel === "low") {
-			thinkStyled = th.fg("text", thinkLevel);
-		}
-		segments.push(`${th.fg("dim", "🧠")} ${thinkStyled}`);
+		segments.push(modelDisplay);
+		segments.push(`Think ${st.thinkingLevel ?? "off"}`);
 
 		// 上下文 Token 使用
 		try {
@@ -89,7 +94,7 @@ export class TopStatusBarComponent implements Component {
 				const pct = Math.round((usage.tokens / usage.contextWindow) * 100);
 				const kTokens = (usage.tokens / 1000).toFixed(1);
 				const kWindow = Math.round(usage.contextWindow / 1000);
-				segments.push(`${th.fg("dim", "📊")} ${th.fg("muted", `${kTokens}k/${kWindow}k (${pct}%)`)}`);
+				segments.push(`Context ${kTokens}k/${kWindow}k (${pct}%)`);
 			}
 		} catch {
 			// ignore usage calculation errors
@@ -98,36 +103,27 @@ export class TopStatusBarComponent implements Component {
 		// 错误信息显示（若是错误退出）
 		if (st.status === "error" && st.errorMessage) {
 			const cleanErr = st.errorMessage.replace(/\r?\n/g, " ").trim();
-			segments.unshift(th.fg("error", `Reason: ${cleanErr}`));
+			segments.unshift(`Reason: ${cleanErr}`);
 		} else if (st.status === "aborted") {
-			segments.unshift(th.fg("warning", "Interrupted by user"));
+			segments.unshift("Interrupted by user");
 		}
 
-		// 3. 组合横条并自适应终端宽度
-		const separator = th.fg("borderMuted", " │ ");
-		const sepVisWidth = visibleWidth(separator);
-
-		let content = "";
-		let usedWidth = visibleWidth(badgeRendered);
-
-		for (const seg of segments) {
-			const segWidth = visibleWidth(seg);
-			if (usedWidth + sepVisWidth + segWidth + 2 > width) {
-				break;
-			}
-			content += separator + seg;
-			usedWidth += sepVisWidth + segWidth;
+		// Truncate before applying color so the text and trailing space share one gradient.
+		const text = stripTerminalSequences(truncateToWidth(badge + segments.join("  │  "), width, "…"));
+		const padded = text + " ".repeat(Math.max(0, width - visibleWidth(text)));
+		const badgeWidth = visibleWidth(badge);
+		let line = "";
+		let column = 0;
+		for (const { segment } of graphemes.segment(padded)) {
+			// Style whole graphemes: splitting emoji/CJK would corrupt terminal columns.
+			line += th.style(segment, {
+				fg: RAINBOW_INK,
+				bg: rainbowBackground(column, width),
+				bold: column < badgeWidth,
+			});
+			column += visibleWidth(segment);
 		}
-
-		const fullBar = `${badgeRendered}${content}`;
-		const currentVisible = visibleWidth(fullBar);
-		const fillWidth = Math.max(0, width - currentVisible);
-
-		// 背景填充保持整条背景一致
-		const emptyPad = " ".repeat(fillWidth);
-		const line = `${fullBar}${th.bg("userMessageBg", emptyPad)}`;
-
-		return [truncateToWidth(line, width)];
+		return [line];
 	}
 
 	invalidate(): void {}

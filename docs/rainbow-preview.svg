@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-label="ipiui rainbow status bar style preview: ready, running and error">
+  <defs>
+    <linearGradient id="rainbow" x1="0" y1="0" x2="1" y2="0" color-interpolation="sRGB">
+      <stop offset="0" stop-color="rgb(255,145,158)"/>
+      <stop offset="16.667%" stop-color="rgb(255,195,112)"/>
+      <stop offset="33.333%" stop-color="rgb(237,232,126)"/>
+      <stop offset="50%" stop-color="rgb(133,226,177)"/>
+      <stop offset="66.667%" stop-color="rgb(119,213,244)"/>
+      <stop offset="83.333%" stop-color="rgb(172,180,255)"/>
+      <stop offset="100%" stop-color="rgb(225,160,239)"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="320" fill="#11151e"/>
+  <g font-family="Consolas, 'Cascadia Mono', monospace" font-size="16">
+    <rect width="1200" height="34" fill="url(#rainbow)"/>
+    <text x="18" y="23" fill="#181c2c"><tspan font-weight="700">● READY</tspan><tspan dx="24">magpie/relaycore-gemini/gemini-3.8-flash  │  Think high  │  Context 24.5k/128k (19%)</tspan></text>
+    <text x="18" y="66" fill="#a5aebe">Chat and prompt remain below the floating bar.</text>
+    <text x="18" y="96" fill="#a5aebe">&gt; </text>
+    <rect y="124" width="1200" height="34" fill="url(#rainbow)"/>
+    <text x="18" y="147" fill="#181c2c"><tspan font-weight="700">▶ RUNNING 12s</tspan><tspan dx="24">Tool bash  │  openai/gpt-model  │  Think high  │  Context 24.5k/128k (19%)</tspan></text>
+    <text x="18" y="190" fill="#a5aebe">Reading project files…</text>
+    <rect y="228" width="1200" height="34" fill="url(#rainbow)"/>
+    <text x="18" y="251" fill="#181c2c"><tspan font-weight="700">! ERROR</tspan><tspan dx="24">Reason: Rate limit exceeded 429  │  openai/gpt-model  │  Think high</tspan></text>
+    <text x="18" y="299" fill="#a5aebe">Style reference · one bar appears at the viewport top in actual use</text>
+  </g>
+</svg>

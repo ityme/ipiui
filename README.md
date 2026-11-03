@@ -10,7 +10,7 @@ A clean, non-intrusive floating status bar extension for the [Pi coding agent](h
 - 🤖 **Model & Thinking Level**: Shows current LLM model (`provider/modelId`) and reasoning/thinking level.
 - 📊 **Context Token Usage**: Displays active token count and percentage of context window.
 - ⚠️ **Error & Exit Indicators**: Clearly signals when an agent turn ends due to an error, rate limit, or user abort (`Esc`/`Ctrl+C`).
-- 🎨 **Adaptive Theming**: Automatically blends with Pi's active color theme.
+- 🎨 **Rainbow Background**: A continuous coral → amber → yellow → mint → cyan → periwinkle → lilac gradient fills the full row. Dark text and bold status labels stay readable; Pi converts colors to truecolor or 256-color output. [Style preview](docs/rainbow-preview.svg).
 - ⌨️ **Commands**: Toggle on/off anytime with `/topbar`.
 
 ## Installation
@@ -43,7 +43,7 @@ In regular mode, the terminal emulator owns scrollback. When reviewing older ter
 
 ## Verification
 
-Run `npm test` to check all status badges using Pi 1.5.0's real `dark`, `light`, and `system` themes, narrow terminal widths, context usage, and lifecycle transitions. Integration tests run the real regular/fullscreen TUI renderers against an in-memory terminal, checking first-row placement with long transcripts, resizing, input focus, other overlays, visibility toggles, remounting, and cleanup. Tests use installed Pi development peers or the default Pi 1.5.0 installation; set `PI_TEST_HOST_ROOT` to its `node_modules` directory if it is elsewhere.
+Run `npm test` to check all status badges using Pi 1.5.0's real `dark`, `light`, and `system` themes, narrow terminal widths, context usage, and lifecycle transitions. Gradient tests verify full-width color coverage, text contrast of at least 4.5:1 in truecolor and 256-color modes, and intact CJK/emoji graphemes. Integration tests run the real regular/fullscreen TUI renderers against an in-memory terminal, checking first-row placement with long transcripts, resizing, input focus, other overlays, visibility toggles, remounting, and cleanup. Tests use installed Pi development peers or the default Pi 1.5.0 installation; set `PI_TEST_HOST_ROOT` to its `node_modules` directory if it is elsewhere.
 
 After updating the extension, restart Pi with `pi -e I:/ispace/ipiui` (or run `/reload` in an instance started with that option). Send a prompt to check `RUNNING`, then press Escape during execution to check `STOPPED`.
 

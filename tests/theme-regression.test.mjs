@@ -26,9 +26,9 @@ const jiti = createJiti(path.join(projectRoot, "index.ts"), {
 	},
 });
 const { default: extension, TopStatusBarComponent } = jiti(path.join(projectRoot, "index.ts"));
-const { getThemeByName } = await import(pathToFileURL(path.join(hostRoot,
+const { getThemeByName, loadThemeFromPath } = await import(pathToFileURL(path.join(hostRoot,
 	"@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js")));
-const { visibleWidth, stripTerminalSequences, TuiMainScreen, TuiAltScreen, Text } = await import(pathToFileURL(path.join(hostRoot,
+const { visibleWidth, stripTerminalSequences, colorToRgb, indexedColor, TuiMainScreen, TuiAltScreen, Text } = await import(pathToFileURL(path.join(hostRoot,
 	"@earendil-works/pi-tui/dist/index.js")));
 const context = {
 	getContextUsage: () => ({ tokens: 24500, contextWindow: 128000, percent: 19.140625 }),
@@ -67,6 +67,49 @@ test("real theme renders context usage including zero and unknown counts", () =>
 		else assert.ok(line.includes(`${(tokens / 1000).toFixed(1)}k/128k`));
 	}
 });
+
+function luminance({ r, g, b }) {
+	const linear = [r, g, b].map(value => {
+		const channel = value / 255;
+		return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+	});
+	return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+}
+
+for (const mode of ["truecolor", "256color"]) {
+	test(`rainbow ${mode}: full-width background, readable contrast, intact CJK and emoji`, () => {
+		const theme = loadThemeFromPath(path.join(hostRoot,
+			"@earendil-works/pi-coding-agent/dist/modes/interactive/theme/dark.json"), mode);
+		const component = new TopStatusBarComponent({
+			status: "idle", visible: true, modelId: "中文👨‍👩‍👧‍👦e\u0301", thinkingLevel: "high",
+		}, theme, context);
+		for (const width of [1, 8, 40, 100, 200]) {
+			const line = component.render(width)[0];
+			assert.equal(visibleWidth(line), width);
+			if (width >= 40) assert.ok(stripTerminalSequences(line).includes("中文👨‍👩‍👧‍👦e\u0301"));
+			const colors = [...line.matchAll(/\u001b\[(38|48);(2;\d+;\d+;\d+|5;\d+)m/g)];
+			let foreground;
+			let background;
+			const backgrounds = new Set();
+			for (const match of colors) {
+				const parts = match[2].split(";").map(Number);
+				const color = parts[0] === 2 ? { r: parts[1], g: parts[2], b: parts[3] }
+					: colorToRgb(indexedColor(parts[1]));
+				if (match[1] === "38") foreground = color;
+				else {
+					background = color;
+					backgrounds.add(match[2]);
+				}
+				if (foreground && background) {
+					const levels = [luminance(foreground), luminance(background)].sort((a, b) => a - b);
+					assert.ok((levels[1] + 0.05) / (levels[0] + 0.05) >= 4.5);
+				}
+			}
+			assert.ok(backgrounds.size >= Math.min(width, 6));
+			assert.ok(colors.length > 0, "Gradient must emit concrete foreground/background ANSI colors");
+		}
+	});
+}
 
 class TestTerminal {
 	columns = 200;
