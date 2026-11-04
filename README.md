@@ -17,8 +17,8 @@ Your prompt
 
 Information order:
 
-1. Running state: `✓ READY`, animated `◐/◓/◑/◒ RUNNING` with elapsed seconds and active tools, `✗ ERROR`, or `■ STOPPED`. The running icon advances every 180ms while an agent is active.
-2. Short model ID and thinking level.
+1. Running state: `✓ READY`, animated `⠋/⠙/⠹/⠸... RUNNING` with elapsed seconds and active tools, `✗ ERROR`, or `■ STOPPED`. The braille spinner animates smoothly while active.
+2. Short model ID and color-coded thinking level (sky blue for high/max, warm amber for medium, green for low, muted slate for off).
 3. `↑` cumulative input tokens and `↓` cumulative output tokens for the session.
 4. `Σ` cumulative input + output + cache-read + cache-write tokens. Reasoning is already part of output and is not counted twice.
 5. Cumulative dollar cost reported by Pi: provider-billed cost when available, otherwise Pi's model-price estimate. A zero value may indicate that pricing is unavailable, not necessarily a free request.
@@ -27,7 +27,7 @@ Information order:
 
 Totals follow Pi's footer accounting across all session entries, including usage entries, tools, compaction and branch summaries. They are not restricted to the latest response or the post-compaction context.
 
-The rainbow background fills the full row in truecolor or 256-color terminals. Narrow windows shorten the model and directory, then drop trailing fields to preserve state/model/thinking first. The editor itself is Pi's native editor, without a custom prompt gutter.
+The status row features a **subdued, elegant rainbow atmospheric tint** (mixed into dark or light terminal backgrounds) rather than a harsh solid neon background, maintaining high contrast (≥ 7.6:1 in dark mode, ≥ 12.5:1 in light mode) while gently flowing over time. Narrow windows shorten the model and directory, then drop trailing fields to preserve state/model/thinking first. The editor itself is Pi's native editor, without a custom prompt gutter.
 
 Pi retains ownership of editing, completion, paste, interrupt, shortcuts, IME markers and mouse coordinates. Completion menus still appear temporarily below the input border when active; the idle footer is empty.
 
@@ -57,19 +57,21 @@ This extension restores the native editor and hides the footer. Disable competin
 
 The command name is retained for compatibility; the row is no longer at the viewport top. Regular terminal history scrollback still scrolls the whole rendered interface, but the row occupies its own space and never overlays chat text.
 
-## Experimental Windows Terminal split-pane titles
+## Windows Terminal split-pane titles
 
-Opt-in only: no title changes or shared files are made until joining a group. In **each Pi pane in the same tab**, run:
+By default, all Pi instances **automatically join a shared title group (`all`) on startup**. No commands are required.
+
+When running multiple split panes in Windows Terminal, each pane publishes a compact combined title such as:
 
 ```text
-/tabgroup work
+[1▶api 2✓web 3○cmd]
 ```
 
-Both panes then publish the same aggregate title, for example `[1▶cmd | 2✓cmd]`. Windows Terminal normally displays the focused pane's title, so every participating pane must publish the aggregate. A plain shell or a non-participating pane will still display its own title when focused.
-
-- `/tabname api` — change this member's label from `cmd` to `api` (up to 20 Unicode code points).
-- `/tabgroup` — show group/name information.
-- `/tabgroup off` — leave, stop writing the title and set this pane's title to `pi`.
+- Compact layout saves tab bar space without pipe separators (`[1▶api 2✓web]`).
+- `/tabname NAME` — change this pane's short label from `cmd` to `NAME` (e.g., `/tabname api`).
+- `/tabgroup NAME` — isolate this pane into a custom group name (e.g., `/tabgroup projectA`).
+- `/tabgroup off` — disable title management for this pane and restore title to `pi`.
+- `/tabgroup` — show current group and pane label.
 - Symbols: `○` initial idle, `▶` running, `✓` completed, `✗` error, `■` interrupted.
 
 Membership is manual. Use different group names for different tabs/windows; the extension cannot infer Windows Terminal's tab membership or actual pane order. Numbers follow member join order, not screen position, and may change after leaving/rejoining. `/reload` removes the old member; rejoin the group after reload. Normal shutdown removes membership, while a crashed member stops appearing after 15 seconds without a heartbeat. Updates from peers arrive about once per second.

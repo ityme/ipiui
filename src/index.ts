@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { TabTitleGroup, cleanTitleLabel, type TabStatus } from "./tab-title.js";
 import {
+	type Color,
 	type Component,
 	type TUI,
 	mixColors,
@@ -48,18 +49,63 @@ export function collectUsage(entries: ReturnType<ExtensionContext["sessionManage
 	return totals;
 }
 
-const RAINBOW_STOPS = [
-	rgbColor(255, 145, 158), rgbColor(255, 195, 112), rgbColor(237, 232, 126),
-	rgbColor(133, 226, 177), rgbColor(119, 213, 244), rgbColor(172, 180, 255), rgbColor(225, 160, 239),
+const RAW_RAINBOW = [
+	rgbColor(255, 95, 120),  // coral / red
+	rgbColor(255, 160, 70),  // amber / orange
+	rgbColor(245, 215, 80),  // yellow
+	rgbColor(70, 215, 140),  // emerald / green
+	rgbColor(60, 195, 245),  // sky / cyan
+	rgbColor(130, 150, 250), // indigo / blue
+	rgbColor(215, 120, 240), // violet / purple
 ];
-const RAINBOW_INK = rgbColor(24, 28, 44);
-const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-const RUNNING_ICONS = ["◐", "◓", "◑", "◒"];
 
-export function rainbowBackground(column: number, width: number) {
-	const position = Math.max(0, Math.min(1, column / Math.max(1, width - 1))) * (RAINBOW_STOPS.length - 1);
-	const index = Math.min(RAINBOW_STOPS.length - 2, Math.floor(position));
-	return mixColors(RAINBOW_STOPS[index], RAINBOW_STOPS[index + 1], position - index, "srgb");
+const DARK_BASE_BG = rgbColor(20, 24, 33);
+const LIGHT_BASE_BG = rgbColor(245, 247, 250);
+
+const DARK_RAINBOW_STOPS = RAW_RAINBOW.map(c => mixColors(DARK_BASE_BG, c, 0.28, "srgb"));
+const LIGHT_RAINBOW_STOPS = RAW_RAINBOW.map(c => mixColors(LIGHT_BASE_BG, c, 0.22, "srgb"));
+
+const DARK_INK = rgbColor(240, 243, 248);
+const LIGHT_INK = rgbColor(24, 28, 44);
+
+const BRAILLE_SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+export function rainbowBackground(column: number, width: number, isDark = true, timeMs = 0) {
+	const stops = isDark ? DARK_RAINBOW_STOPS : LIGHT_RAINBOW_STOPS;
+	// Smooth flow: one full shift cycle every 4500ms
+	const shift = (timeMs / 4500) % 1;
+	const norm = column / Math.max(1, width - 1);
+	const position = ((norm + shift) % 1) * (stops.length - 1);
+	const index = Math.min(stops.length - 2, Math.floor(position));
+	return mixColors(stops[index], stops[index + 1], position - index, "srgb");
+}
+
+function thinkingTextColor(level: string | undefined, isDark: boolean): Color {
+	const normalized = (level ?? "off").toLowerCase();
+	if (isDark) {
+		if (normalized === "max" || normalized === "xhigh" || normalized === "high") {
+			return rgbColor(224, 242, 254); // sky-100: crisp contrast (>= 5.9:1) even on quantized 256color terminals
+		}
+		if (normalized === "medium") {
+			return rgbColor(254, 240, 138); // yellow-200
+		}
+		if (normalized === "low") {
+			return rgbColor(187, 247, 208); // green-200
+		}
+		return rgbColor(226, 232, 240); // slate-200
+	} else {
+		if (normalized === "max" || normalized === "xhigh" || normalized === "high") {
+			return rgbColor(3, 105, 161); // sky-700
+		}
+		if (normalized === "medium") {
+			return rgbColor(180, 83, 9); // amber-700
+		}
+		if (normalized === "low") {
+			return rgbColor(21, 128, 61); // green-700
+		}
+		return rgbColor(71, 85, 105); // slate-600
+	}
 }
 
 function singleLine(text: string): string {
@@ -82,13 +128,20 @@ export class TopStatusBarComponent implements Component {
 	render(width: number): string[] {
 		if (!this.state.visible || width <= 0) return [];
 		const st = this.state;
+		const now = Date.now();
+		const isDark = this.theme.appearance !== "light";
+		const baseInk = isDark ? DARK_INK : LIGHT_INK;
+
 		let status = "✓ READY";
 		if (st.status === "running") {
-			const elapsed = st.startTime ? Math.floor((Date.now() - st.startTime) / 1000) : 0;
-			const frame = RUNNING_ICONS[Math.floor(Date.now() / 180) % RUNNING_ICONS.length];
+			const elapsed = st.startTime ? Math.floor((now - st.startTime) / 1000) : 0;
+			const frame = BRAILLE_SPINNER[Math.floor(now / 100) % BRAILLE_SPINNER.length];
 			status = `${frame} RUNNING ${elapsed}s${st.activeTool ? ` ${singleLine(st.activeTool)}` : ""}`;
-		} else if (st.status === "error") status = "✗ ERROR";
-		else if (st.status === "aborted") status = "■ STOPPED";
+		} else if (st.status === "error") {
+			status = "✗ ERROR";
+		} else if (st.status === "aborted") {
+			status = "■ STOPPED";
+		}
 
 		const usage = st.usage ?? { input: 0, output: 0, total: 0, cost: 0 };
 		const model = singleLine(st.modelId?.split("/").pop() || "no-model");
@@ -96,13 +149,22 @@ export class TopStatusBarComponent implements Component {
 		let context = "ctx ?";
 		const contextUsage = this.context.getContextUsage();
 		if (contextUsage && contextUsage.tokens !== null && contextUsage.contextWindow > 0) {
-			context = `ctx ${shortCount(contextUsage.tokens)}/${shortCount(contextUsage.contextWindow)} (${Math.round(contextUsage.percent ?? contextUsage.tokens / contextUsage.contextWindow * 100)}%)`;
+			context = `ctx ${shortCount(contextUsage.tokens)}/${shortCount(contextUsage.contextWindow)} (${Math.round(contextUsage.percent ?? (contextUsage.tokens / contextUsage.contextWindow) * 100)}%)`;
 		}
+
+		const thinkStr = st.thinkingLevel ?? "off";
 		const parts = [
-			model, st.thinkingLevel ?? "off", `↑${shortCount(usage.input)}`, `↓${shortCount(usage.output)}`,
-			`Σ${shortCount(usage.total)}`, `$${usage.cost.toFixed(3)}`, context,
-			singleLine(st.gitBranch ?? "no-git"), cwd,
+			model,
+			thinkStr,
+			`↑${shortCount(usage.input)}`,
+			`↓${shortCount(usage.output)}`,
+			`Σ${shortCount(usage.total)}`,
+			`$${usage.cost.toFixed(3)}`,
+			context,
+			singleLine(st.gitBranch ?? "no-git"),
+			cwd,
 		];
+
 		const prefix = `──── ${status} `;
 		const fit = () => prefix + parts.join(" · ") + " ────";
 		if (visibleWidth(fit()) > width) {
@@ -115,16 +177,33 @@ export class TopStatusBarComponent implements Component {
 			const reason = ` · ${singleLine(st.errorMessage)}`;
 			if (visibleWidth(fit() + reason) <= width) parts.push(singleLine(st.errorMessage));
 		}
-		const text = stripTerminalSequences(truncateToWidth(fit(), width, "…"));
+
+		const fullRaw = fit();
+		const text = stripTerminalSequences(truncateToWidth(fullRaw, width, "…"));
 		const padded = text + " ".repeat(Math.max(0, width - visibleWidth(text)));
 		const prefixWidth = visibleWidth(prefix);
+
+		// Calculate think range within fullRaw to apply dedicated semantic color
+		const modelIndex = fullRaw.indexOf(` ${model} · `);
+		const thinkStart = modelIndex >= 0 ? modelIndex + 1 + visibleWidth(model) + 3 : -1;
+		const thinkEnd = thinkStart >= 0 ? thinkStart + visibleWidth(thinkStr) : -1;
+		const thinkColor = thinkingTextColor(st.thinkingLevel, isDark);
+
 		let line = "";
 		let column = 0;
 		for (const { segment } of graphemes.segment(padded)) {
+			const segWidth = visibleWidth(segment);
+			const bg = rainbowBackground(column, width, isDark, now);
+			const isPrefix = column < prefixWidth;
+			const isThink = column >= thinkStart && (column + segWidth) <= thinkEnd;
+			const fg = isThink ? thinkColor : baseInk;
+
 			line += this.theme.style(segment, {
-				fg: RAINBOW_INK, bg: rainbowBackground(column, width), bold: column < prefixWidth,
+				fg,
+				bg,
+				bold: isPrefix || isThink,
 			});
-			column += visibleWidth(segment);
+			column += segWidth;
 		}
 		return [line];
 	}
@@ -143,7 +222,7 @@ export default function (pi: ExtensionAPI) {
 	const activeTools = new Map<string, string>();
 	let lastAssistantFailed = false;
 	let titleGroup: TabTitleGroup | undefined;
-	let groupName: string | undefined;
+	let groupName: string | undefined = "all"; // 默认自动共享 'all' 分组
 	let paneLabel = "cmd";
 	let titleStatus: TabStatus = "idle";
 	let titleHeartbeat: ReturnType<typeof setInterval> | undefined;
@@ -184,7 +263,8 @@ export default function (pi: ExtensionAPI) {
 	};
 	const startIconTimer = () => {
 		if (iconTimer) clearInterval(iconTimer);
-		iconTimer = setInterval(redraw, 180);
+		// 100ms smooth braille rotation & flowing gradient updates
+		iconTimer = setInterval(redraw, 100);
 		iconTimer.unref();
 	};
 	const redraw = () => {
@@ -236,7 +316,9 @@ export default function (pi: ExtensionAPI) {
 		}, { placement: "aboveEditor" });
 		ctx.ui.setEditorComponent(undefined);
 		titleStatus = state.status === "running" ? "running" : "idle";
+		// 自动加入默认群组 'all'
 		if (groupName) await joinTitleGroup(groupName);
+		if (state.status === "running") startIconTimer();
 		redraw();
 	});
 
@@ -311,13 +393,13 @@ export default function (pi: ExtensionAPI) {
 		tuiInstance = null;
 	});
 	pi.registerCommand("tabgroup", {
-		description: "Join a manually named split-pane title group (/tabgroup NAME|off)",
+		description: "Join or switch split-pane title group (/tabgroup [NAME|off])",
 		handler: async (args, ctx) => {
 			if (ctx.mode !== "tui") return;
 			sync(ctx);
 			const name = args.trim();
 			if (!name) {
-				ctx.ui.notify(groupName ? `Title group: ${groupName}; name: ${paneLabel}` : "Usage: /tabgroup NAME (same name in each pane), or /tabgroup off", "info");
+				ctx.ui.notify(groupName ? `Title group: ${groupName}; name: ${paneLabel}` : "Auto-grouped: all (use /tabgroup NAME or /tabgroup off)", "info");
 				return;
 			}
 			if (name === "off") {
@@ -337,7 +419,7 @@ export default function (pi: ExtensionAPI) {
 			}
 			try {
 				await joinTitleGroup(name);
-				ctx.ui.notify(`Joined title group: ${name}. Join the same group in the other panes.`, "info");
+				ctx.ui.notify(`Joined title group: ${name}`, "info");
 			} catch {
 				ctx.ui.notify("Could not join title group; check temporary-directory access", "error");
 			}

@@ -1,22 +1,42 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="320" viewBox="0 0 1440 320" role="img" aria-label="Chat above a rainbow information row, a native prompt without a prefix, and an empty footer">
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="340" viewBox="0 0 1440 340" role="img" aria-label="Subdued flowing rainbow background with rotating braille status and colored thinking levels">
   <defs>
-    <linearGradient id="rainbow" x1="0" y1="0" x2="1" y2="0" color-interpolation="sRGB">
-      <stop offset="0" stop-color="rgb(255,145,158)"/>
-      <stop offset="16.667%" stop-color="rgb(255,195,112)"/>
-      <stop offset="33.333%" stop-color="rgb(237,232,126)"/>
-      <stop offset="50%" stop-color="rgb(133,226,177)"/>
-      <stop offset="66.667%" stop-color="rgb(119,213,244)"/>
-      <stop offset="83.333%" stop-color="rgb(172,180,255)"/>
-      <stop offset="100%" stop-color="rgb(225,160,239)"/>
+    <!-- Soft subdued dark rainbow gradient (28% tint with #141821 base) -->
+    <linearGradient id="soft-rainbow-dark" x1="0" y1="0" x2="1" y2="0" color-interpolation="sRGB">
+      <stop offset="0%" stop-color="#562c39"/>
+      <stop offset="16.6%" stop-color="#563e2b"/>
+      <stop offset="33.3%" stop-color="#534d2e"/>
+      <stop offset="50%" stop-color="#224d3f"/>
+      <stop offset="66.6%" stop-color="#1f485c"/>
+      <stop offset="83.3%" stop-color="#333b5e"/>
+      <stop offset="100%" stop-color="#4b335b"/>
     </linearGradient>
   </defs>
-  <rect width="1440" height="320" fill="#11151e"/>
+  <rect width="1440" height="340" fill="#0f131a"/>
   <g font-family="Consolas, 'Cascadia Mono', monospace" font-size="16">
-    <text x="20" y="36" fill="#d5d9e2">Chat messages…</text>
-    <text x="20" y="72" fill="#a5aebe">Project files have been listed. Ready for your next instruction.</text>
-    <rect y="116" width="1440" height="32" fill="url(#rainbow)"/>
-    <text x="12" y="138" fill="#181c2c"><tspan font-weight="700">──── READY </tspan><tspan>gemini3.8flash · high · ↑12.4k · ↓3.2k · Σ18.6k · $0.023 · ctx 15.7k/1.0M (2%) · dev · I:/ispace/ipiui ────</tspan></text>
-    <path d="M0 168H1440 M0 222H1440" stroke="#667085" stroke-width="1"/>
-    <text x="12" y="202" fill="#d5d9e2">Your prompt</text>
+    <text x="20" y="34" fill="#64748b">Tab Title: <tspan fill="#38bdf8" font-weight="700">[1▶api 2✓web 3○cmd]</tspan> (compact, auto-grouped 'all')</text>
+    <text x="20" y="68" fill="#94a3b8">Chat transcript lines…</text>
+
+    <!-- Bar State: RUNNING with rotating braille & colored thinking level -->
+    <rect y="100" width="1440" height="32" fill="url(#soft-rainbow-dark)"/>
+    <text x="14" y="122" fill="#f1f5f9">
+      <tspan font-weight="700">──── ⠋ RUNNING 6s (bash) </tspan>
+      <tspan>gemini-3.8-flash · </tspan>
+      <tspan fill="#e0f2fe" font-weight="700">high</tspan>
+      <tspan> · ↑14.2k · ↓1.1k · Σ18.6k · $0.024 · ctx 15.6k/1.0M (2%) · dev · I:/tmp ────</tspan>
+    </text>
+
+    <!-- Editor border & input -->
+    <path d="M0 148H1440 M0 202H1440" stroke="#334155" stroke-width="1"/>
+    <text x="14" y="182" fill="#f8fafc">npm test</text>
+
+    <!-- Bar State: READY with colored medium thinking level -->
+    <rect y="234" width="1440" height="32" fill="url(#soft-rainbow-dark)"/>
+    <text x="14" y="256" fill="#f1f5f9">
+      <tspan font-weight="700">──── ✓ READY </tspan>
+      <tspan>claude-3-7-sonnet · </tspan>
+      <tspan fill="#fef08a" font-weight="700">medium</tspan>
+      <tspan> · ↑22.0k · ↓3.4k · Σ25.4k · $0.061 · ctx 24.5k/200k (12%) · dev · I:/tmp ────</tspan>
+    </text>
+    <text x="14" y="302" fill="#64748b">Subdued atmospheric background tint · Non-intrusive · High text contrast (≥ 7.6:1)</text>
   </g>
 </svg>

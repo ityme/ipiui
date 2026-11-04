@@ -31,21 +31,21 @@ test("two members aggregate, update, isolate groups, expire crashed peers, clean
 		now++;
 		await second.start("work", "cmd", "done");
 		await first.refresh();
-		assert.equal(firstTitle, "[1▶cmd | 2✓cmd]");
+		assert.equal(firstTitle, "[1▶cmd 2✓cmd]");
 		assert.equal(secondTitle, firstTitle);
 		await isolated.start("another-tab", "other", "idle");
 		assert.equal(isolatedTitle, "[1○other]");
 		await Promise.all([first.update("error", "api"), second.update("aborted", "web")]);
 		await Promise.all([first.refresh(), second.refresh()]);
-		assert.equal(firstTitle, "[1✗api | 2■web]");
+		assert.equal(firstTitle, "[1✗api 2■web]");
 		assert.equal(secondTitle, firstTitle);
 		const directory = tabGroupDirectory("work", root);
 		await writeFile(join(directory, "aaaa.json"), "not-json");
-		await first.refresh(); assert.equal(firstTitle, "[1✗api | 2■web]");
+		await first.refresh(); assert.equal(firstTitle, "[1✗api 2■web]");
 		now += 16_000;
 		await first.refresh(); assert.equal(firstTitle, "[1✗api]");
 		await second.refresh(); await first.refresh();
-		assert.equal(firstTitle, "[1✗api | 2■web]");
+		assert.equal(firstTitle, "[1✗api 2■web]");
 		await second.stop(); await first.refresh(); assert.equal(firstTitle, "[1✗api]");
 		await first.stop(); await first.stop();
 		assert.equal((await readdir(directory)).filter(name => name.endsWith(".tmp")).length, 0);
@@ -94,7 +94,7 @@ test("independent Node processes exchange live title records", async () => {
  try {
   const a=start("cmd","running"); await until(()=>a.messages.some(m=>m.title==="[1▶cmd]"));
   const b=start("cmd","done");
-  await until(()=>[a,b].every(p=>p.messages.some(m=>m.title==="[1▶cmd | 2✓cmd]")));
+  await until(()=>[a,b].every(p=>p.messages.some(m=>m.title==="[1▶cmd 2✓cmd]")));
   const bExit=new Promise(resolve=>b.child.once("exit",resolve)); b.child.send("stop"); await bExit;
   const count=a.messages.length;
   await until(()=>a.messages.slice(count).some(m=>m.title==="[1▶cmd]"));

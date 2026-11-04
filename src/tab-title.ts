@@ -30,7 +30,7 @@ export function tabGroupDirectory(group: string, root?: string): string {
 
 export function formatTabTitle(records: PaneRecord[]): string {
 	return "[" + [...records].sort((a, b) => a.started - b.started || a.id.localeCompare(b.id))
-		.map((record, index) => `${index + 1}${SYMBOLS[record.status]}${cleanTitleLabel(record.label)}`).join(" | ") + "]";
+		.map((record, index) => `${index + 1}${SYMBOLS[record.status]}${cleanTitleLabel(record.label)}`).join(" ") + "]";
 }
 
 interface TitleGroupOptions {
