@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="340" viewBox="0 0 1440 340" role="img" aria-label="Split statusline with 34 percent deep pill backgrounds, emoji indicators, and fixed width status badge">
+  <defs>
+    <style>
+      .mono { font-family: "Cascadia Code", "Fira Code", Consolas, monospace; font-size: 13.5px; }
+    </style>
+  </defs>
+  <rect width="1440" height="340" fill="#090b10"/>
+  <g class="mono">
+    <!-- Header info -->
+    <text x="20" y="34" fill="#64748b">Windows Terminal Title: <tspan fill="#38bdf8" font-weight="700">[1▶api 2✓web 3○cmd]</tspan></text>
+    <text x="20" y="68" fill="#94a3b8">Chat transcript lines…</text>
+
+    <!-- State 1: RUNNING (Deep emerald pill, fixed width, ⬆️ ⬇️ 💰¥) -->
+    <!-- Status badge: #0b4334 bg, #34d399 fg -->
+    <rect x="12" y="98" width="146" height="28" rx="5" fill="#0b4334"/>
+    <text x="22" y="117" fill="#34d399" font-weight="700">⠋ RUNNING 6s ●</text>
+
+    <!-- Project badge: #1c2333 bg, #f1f5f9 fg -->
+    <rect x="166" y="98" width="86" height="28" rx="5" fill="#1c2333"/>
+    <text x="176" y="117" fill="#f1f5f9" font-weight="700">📁 ipiui</text>
+
+    <!-- Branch badge: #0b3c55 bg, #38bdf8 fg -->
+    <rect x="258" y="98" width="70" height="28" rx="5" fill="#0b3c55"/>
+    <text x="268" y="117" fill="#38bdf8"> dev</text>
+
+    <!-- Right side: Model & Thinking -->
+    <!-- Model: #3c235a bg, #e9d5ff fg -->
+    <rect x="670" y="98" width="194" height="28" rx="5" fill="#3c235a"/>
+    <text x="680" y="117" fill="#e9d5ff" font-weight="700">🤖 gemini-3.8-flash</text>
+    <rect x="832" y="103" width="24" height="18" rx="3" fill="#232a46"/>
+    <text x="835" y="116" fill="#818cf8" font-size="11.5px">med</text>
+
+    <!-- Right side: Telemetry (⬆️ ⬇️ 💰¥, no Σ) -->
+    <rect x="872" y="98" width="270" height="28" rx="5" fill="#1e2637"/>
+    <text x="882" y="117" fill="#60a5fa">⬆️ 35.2M</text>
+    <text x="960" y="117" fill="#34d399">⬇️ 224.7k</text>
+    <text x="1050" y="117" fill="#fbbf24" font-weight="700">💰 37.99¥</text>
+
+    <!-- Right side: CTX gauge -->
+    <rect x="1150" y="98" width="278" height="28" rx="5" fill="#1e2637"/>
+    <text x="1162" y="117" fill="#94a3b8" font-weight="700">CTX</text>
+    <text x="1200" y="117" fill="#2dd4bf" font-weight="700">━━━━</text>
+    <text x="1236" y="117" fill="#94a3b8">────</text>
+    <text x="1280" y="117" fill="#2dd4bf" font-weight="700">51%</text>
+    <text x="1318" y="117" fill="#94a3b8">539.1k/1.0M</text>
+
+    <!-- Editor border & input -->
+    <path d="M0 144H1440 M0 198H1440" stroke="#222c40" stroke-width="1"/>
+    <text x="14" y="177" fill="#f8fafc">git commit -m "update"</text>
+
+    <!-- State 2: READY (Same fixed-width status badge: 146px) -->
+    <!-- Status badge: #1c2638 bg, #94a3b8 fg, same width! -->
+    <rect x="12" y="228" width="146" height="28" rx="5" fill="#1c2638"/>
+    <text x="22" y="247" fill="#94a3b8" font-weight="700">✓ READY 6s ●</text>
+
+    <rect x="166" y="228" width="86" height="28" rx="5" fill="#1c2333"/>
+    <text x="176" y="247" fill="#f1f5f9" font-weight="700">📁 ipiui</text>
+
+    <rect x="258" y="228" width="70" height="28" rx="5" fill="#0b3c55"/>
+    <text x="268" y="247" fill="#38bdf8"> dev</text>
+
+    <!-- Right side for ready -->
+    <rect x="670" y="228" width="194" height="28" rx="5" fill="#3c235a"/>
+    <text x="680" y="247" fill="#e9d5ff" font-weight="700">🤖 claude-3-7-sonnet</text>
+    <rect x="832" y="233" width="24" height="18" rx="3" fill="#232a46"/>
+    <text x="835" y="246" fill="#818cf8" font-size="11.5px">med</text>
+
+    <rect x="872" y="228" width="270" height="28" rx="5" fill="#1e2637"/>
+    <text x="882" y="247" fill="#60a5fa">⬆️ 22.0k</text>
+    <text x="960" y="247" fill="#34d399">⬇️ 3.4k</text>
+    <text x="1050" y="247" fill="#fbbf24" font-weight="700">💰 0.06¥</text>
+
+    <rect x="1150" y="228" width="278" height="28" rx="5" fill="#1e2637"/>
+    <text x="1162" y="247" fill="#94a3b8" font-weight="700">CTX</text>
+    <text x="1200" y="247" fill="#2dd4bf" font-weight="700">━</text>
+    <text x="1209" y="247" fill="#94a3b8">───────</text>
+    <text x="1280" y="247" fill="#2dd4bf" font-weight="700">12%</text>
+    <text x="1318" y="247" fill="#94a3b8">24.5k/200.0k</text>
+
+    <text x="14" y="296" fill="#64748b">Deep 34% pill backgrounds · Status badge lock-width with seconds · ⬆️ ⬇️ 💰¥ · Pure space separation</text>
+  </g>
+</svg>

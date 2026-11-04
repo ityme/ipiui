@@ -84,7 +84,7 @@ test("information order, unknown context, cumulative totals, branch and path", (
 		usage: { input: 1200, output: 300, total: 2500, cost: 0.123 },
 	}, getThemeByName("dark"), context);
 	const splitLine = plain(splitComp.render(200)[0]);
-	const splitFields = ["READY", "ipiui", "dev", "gemini3.8flash", "high", "↑1.2k", "↓300", "(Σ2.5k)", "$0.12", "CTX"];
+	const splitFields = ["READY", "ipiui", "dev", "🤖", "gemini3.8flash", "high", "⬆️ 1.2k", "⬇️ 300", "💰 0.12¥", "CTX"];
 	let splitPos = -1;
 	for (const f of splitFields) {
 		const next = splitLine.indexOf(f);
@@ -341,7 +341,7 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		await emit("message_end", { message: { role: "assistant", stopReason: "error", errorMessage: "429" } });
 		await emit("agent_settled", { aborted: false }); assert.ok(line().includes("✗"));
 		await untilTitle(title => title === "[1✗api]");
-		assert.ok(line().includes("↑100"));
+		assert.ok(line().includes("⬆️ 100"));
 		await emit("agent_start");
 		await emit("message_end", { message: { role: "assistant", stopReason: "stop" } });
 		await emit("agent_settled", { aborted: false }); assert.ok(line().includes("✓"));

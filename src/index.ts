@@ -17,6 +17,7 @@ export interface TopBarState {
 	status: "idle" | "running" | "error" | "aborted";
 	errorMessage?: string;
 	startTime?: number;
+	durationMs?: number;
 	modelId?: string;
 	thinkingLevel?: string;
 	activeTool?: string;
@@ -66,56 +67,52 @@ function getSemanticPalette(isDark: boolean) {
 		return {
 			canvasBg: rgbColor(9, 11, 16),
 			running: { fg: rgbColor(52, 211, 153), tint: rgbColor(16, 185, 129) },
-			ready: { fg: rgbColor(148, 163, 184), tint: rgbColor(30, 41, 59) },
+			ready: { fg: rgbColor(148, 163, 184), tint: rgbColor(45, 55, 75) },
 			error: { fg: rgbColor(248, 113, 113), tint: rgbColor(239, 68, 68) },
 			aborted: { fg: rgbColor(251, 146, 60), tint: rgbColor(249, 115, 22) },
 			
-			project: { fg: rgbColor(241, 245, 249), tint: rgbColor(28, 35, 51) },
+			project: { fg: rgbColor(241, 245, 249), tint: rgbColor(38, 48, 68) },
 			branch: { fg: rgbColor(56, 189, 248), tint: rgbColor(14, 165, 233) },
 
 			model: { fg: rgbColor(233, 213, 255), tint: rgbColor(168, 85, 247) },
-			thinkTag: { fg: rgbColor(129, 140, 248), bg: rgbColor(22, 27, 46) },
+			thinkTag: { fg: rgbColor(129, 140, 248), bg: rgbColor(35, 42, 70) },
 
 			tokenIn: rgbColor(96, 165, 250),
 			tokenOut: rgbColor(52, 211, 153),
-			tokenSum: rgbColor(156, 163, 175),
 			tokenCost: rgbColor(251, 191, 36),
-			telemetryBg: rgbColor(19, 24, 36),
+			telemetryBg: rgbColor(30, 38, 55),
 
-			ctxLow: rgbColor(45, 212, 191),   // cyan-emerald
-			ctxMed: rgbColor(251, 191, 36),   // amber
-			ctxHigh: rgbColor(249, 115, 22),  // orange-red (92%)
+			ctxLow: rgbColor(45, 212, 191),
+			ctxMed: rgbColor(251, 191, 36),
+			ctxHigh: rgbColor(249, 115, 22),
 			ctxTrack: rgbColor(148, 163, 184),
 
-			separator: rgbColor(148, 163, 184),
 			borderLine: rgbColor(30, 38, 56),
 		};
 	} else {
 		return {
 			canvasBg: rgbColor(248, 250, 252),
 			running: { fg: rgbColor(5, 150, 105), tint: rgbColor(209, 250, 229) },
-			ready: { fg: rgbColor(71, 85, 105), tint: rgbColor(241, 245, 249) },
+			ready: { fg: rgbColor(71, 85, 105), tint: rgbColor(226, 232, 240) },
 			error: { fg: rgbColor(220, 38, 38), tint: rgbColor(254, 226, 226) },
 			aborted: { fg: rgbColor(217, 119, 6), tint: rgbColor(254, 243, 199) },
 
-			project: { fg: rgbColor(15, 23, 42), tint: rgbColor(226, 232, 240) },
-			branch: { fg: rgbColor(2, 132, 199), tint: rgbColor(224, 242, 254) },
+			project: { fg: rgbColor(15, 23, 42), tint: rgbColor(203, 213, 225) },
+			branch: { fg: rgbColor(2, 132, 199), tint: rgbColor(186, 230, 253) },
 
-			model: { fg: rgbColor(107, 33, 168), tint: rgbColor(243, 232, 255) },
-			thinkTag: { fg: rgbColor(67, 56, 202), bg: rgbColor(238, 242, 255) },
+			model: { fg: rgbColor(107, 33, 168), tint: rgbColor(233, 213, 255) },
+			thinkTag: { fg: rgbColor(67, 56, 202), bg: rgbColor(224, 231, 255) },
 
 			tokenIn: rgbColor(37, 99, 235),
 			tokenOut: rgbColor(5, 150, 105),
-			tokenSum: rgbColor(100, 116, 139),
 			tokenCost: rgbColor(180, 83, 9),
-			telemetryBg: rgbColor(241, 245, 249),
+			telemetryBg: rgbColor(226, 232, 240),
 
 			ctxLow: rgbColor(13, 148, 136),
 			ctxMed: rgbColor(180, 83, 9),
 			ctxHigh: rgbColor(194, 65, 12),
-			ctxTrack: rgbColor(226, 232, 240),
+			ctxTrack: rgbColor(203, 213, 225),
 
-			separator: rgbColor(203, 213, 225),
 			borderLine: rgbColor(226, 232, 240),
 		};
 	}
@@ -146,24 +143,37 @@ export class TopStatusBarComponent implements Component {
 		const palette = getSemanticPalette(isDark);
 		const canvas = isDark ? DARK_CANVAS : LIGHT_CANVAS;
 
-		// 1. Status 徽章（一比一复刻：盲文动画 + 状态大写 + 发光圆点）
+		// 1. Status 徽章（定长 + 带秒数单位 s）
 		let statusIcon = "✓";
 		let statusLabel = "READY";
 		let statusColors: SemanticColorSet = palette.ready;
+		let elapsedSec = 0;
+
 		if (st.status === "running") {
+			elapsedSec = st.startTime ? Math.floor((now - st.startTime) / 1000) : 0;
 			const frame = BRAILLE_SPINNER[Math.floor(now / 100) % BRAILLE_SPINNER.length];
 			statusIcon = frame;
 			statusLabel = st.activeTool ? `RUNNING (${singleLine(st.activeTool)})` : "RUNNING";
 			statusColors = palette.running;
 		} else if (st.status === "error") {
+			elapsedSec = st.durationMs ? Math.floor(st.durationMs / 1000) : 0;
 			statusIcon = "✗";
 			statusLabel = "ERROR";
 			statusColors = palette.error;
 		} else if (st.status === "aborted") {
+			elapsedSec = st.durationMs ? Math.floor(st.durationMs / 1000) : 0;
 			statusIcon = "■";
 			statusLabel = "STOPPED";
 			statusColors = palette.aborted;
+		} else {
+			elapsedSec = st.durationMs ? Math.floor(st.durationMs / 1000) : 0;
 		}
+
+		// 定长状态内容: 统一补空格至宽度保持一致
+		const statusCore = ` ${statusIcon} ${statusLabel} ${elapsedSec}s ● `;
+		const TARGET_STATUS_VIS_WIDTH = Math.max(18, visibleWidth(statusCore));
+		const curStatusVis = visibleWidth(statusCore);
+		const statusPaddedText = statusCore + " ".repeat(Math.max(0, TARGET_STATUS_VIS_WIDTH - curStatusVis));
 
 		// 2. 项目与分支
 		const usage = st.usage ?? { input: 0, output: 0, total: 0, cost: 0 };
@@ -191,17 +201,17 @@ export class TopStatusBarComponent implements Component {
 		const ctxEmpty = ctxTotalBlocks - ctxFilled;
 		const ctxColor = ctxPercent > 80 ? palette.ctxHigh : ctxPercent > 60 ? palette.ctxMed : palette.ctxLow;
 
-		// 4. 构建渲染模块
-		const pillBg = (tint: Color) => mixColors(canvas, tint, isDark ? 0.16 : 0.22, "srgb");
+		// 4. 构建胶囊（加深底色 32%~36% 明显可见）
+		const pillBg = (tint: Color) => mixColors(canvas, tint, isDark ? 0.34 : 0.30, "srgb");
 
 		// 左侧模块
-		// (A) 状态胶囊: [ ⠋ RUNNING ● ]
-		const statusPill = this.theme.style(` ${statusIcon} ${statusLabel} ● `, {
+		// (A) 状态胶囊
+		const statusPill = this.theme.style(statusPaddedText, {
 			fg: statusColors.fg,
 			bg: pillBg(statusColors.tint),
 			bold: true,
 		});
-		const statusVis = visibleWidth(` ${statusIcon} ${statusLabel} ● `);
+		const statusVis = visibleWidth(statusPaddedText);
 
 		// (B) 项目胶囊: [ 📁 ipiui ]
 		const projectPill = this.theme.style(` 📁 ${cwdBasename} `, {
@@ -220,10 +230,10 @@ export class TopStatusBarComponent implements Component {
 		const branchVis = visibleWidth(`  ${branch} `);
 
 		// 右侧模块
-		// (D) 模型 + 思考复合胶囊: [ gemini-3.8-flash med ]
+		// (D) 模型 + 思考复合胶囊: [ 🤖 gemini-3.8-flash med ]
 		const thinkLevelStr = (st.thinkingLevel ?? "med").toLowerCase();
 		const thinkShort = thinkLevelStr === "medium" ? "med" : thinkLevelStr;
-		const modelPart = this.theme.style(` ${model} `, {
+		const modelPart = this.theme.style(` 🤖 ${model} `, {
 			fg: palette.model.fg,
 			bg: pillBg(palette.model.tint),
 			bold: true,
@@ -234,33 +244,30 @@ export class TopStatusBarComponent implements Component {
 			bold: true,
 		});
 		const modelGroupPill = `${modelPart}${thinkPart} `;
-		const modelGroupVis = visibleWidth(` ${model}  ${thinkShort}  `);
+		const modelGroupVis = visibleWidth(` 🤖 ${model}  ${thinkShort}  `);
 
-		// (E) 吞吐遥测胶囊: [ ↑35.2M ↓225k (Σ117M) │ $37.99 ]
-		const inRaw = `↑${shortCount(usage.input)}`;
-		const outRaw = `↓${shortCount(usage.output)}`;
-		const sumRaw = `(Σ${shortCount(usage.total)})`;
-		const costRaw = `$${usage.cost.toFixed(2)}`;
+		// (E) 吞吐遥测胶囊: [ ⬆️ 35.2M ⬇️ 225k 💰 37.99¥ ] (去除了Σ，纯空格分隔，金额后置¥，前置💰)
+		const inRaw = `⬆️ ${shortCount(usage.input)}`;
+		const outRaw = `⬇️ ${shortCount(usage.output)}`;
+		const costRaw = `💰 ${usage.cost.toFixed(2)}¥`;
 		const teleBg = pillBg(palette.telemetryBg);
 
 		const telemetryPill =
 			this.theme.style(" ", { bg: teleBg }) +
 			this.theme.style(inRaw, { fg: palette.tokenIn, bg: teleBg }) +
-			this.theme.style(" ", { bg: teleBg }) +
+			this.theme.style("  ", { bg: teleBg }) +
 			this.theme.style(outRaw, { fg: palette.tokenOut, bg: teleBg }) +
-			this.theme.style(" ", { bg: teleBg }) +
-			this.theme.style(sumRaw, { fg: palette.tokenSum, bg: teleBg }) +
-			this.theme.style(" │ ", { fg: palette.separator, bg: teleBg }) +
+			this.theme.style("  ", { bg: teleBg }) +
 			this.theme.style(costRaw, { fg: palette.tokenCost, bg: teleBg, bold: true }) +
 			this.theme.style(" ", { bg: teleBg });
-		const teleVis = visibleWidth(` ${inRaw} ${outRaw} ${sumRaw} │ ${costRaw} `);
+		const teleVis = visibleWidth(` ${inRaw}  ${outRaw}  ${costRaw} `);
 
 		// (F) CTX 进度胶囊: [ CTX ━━━━──── 51% 539k/1M ]
-		const ctxTitle = this.theme.style(" CTX ", { fg: palette.tokenSum, bg: teleBg, bold: true });
+		const ctxTitle = this.theme.style(" CTX ", { fg: palette.ready.fg, bg: teleBg, bold: true });
 		const ctxBarFilled = this.theme.style("━".repeat(ctxFilled), { fg: ctxColor, bg: teleBg, bold: true });
 		const ctxBarEmpty = this.theme.style("─".repeat(ctxEmpty), { fg: palette.ctxTrack, bg: teleBg });
 		const ctxNum = this.theme.style(` ${ctxPercent}% `, { fg: ctxColor, bg: teleBg, bold: true });
-		const ctxRatio = this.theme.style(`${shortCount(ctxTokens)}/${shortCount(ctxWindow)} `, { fg: palette.tokenSum, bg: teleBg });
+		const ctxRatio = this.theme.style(`${shortCount(ctxTokens)}/${shortCount(ctxWindow)} `, { fg: palette.ready.fg, bg: teleBg });
 		const ctxPill = `${ctxTitle}${ctxBarFilled}${ctxBarEmpty}${ctxNum}${ctxRatio}`;
 		const ctxVis = visibleWidth(` CTX ${"━".repeat(ctxFilled)}${"─".repeat(ctxEmpty)} ${ctxPercent}% ${shortCount(ctxTokens)}/${shortCount(ctxWindow)} `);
 
@@ -268,7 +275,7 @@ export class TopStatusBarComponent implements Component {
 		const leftStr = `${statusPill} ${projectPill} ${branchPill}`;
 		const leftVis = statusVis + 1 + projectVis + 1 + branchVis;
 
-		// 右侧模块按优先级适配宽度
+		// 右侧模块优先级过滤
 		const rightItems: { pill: string; vis: number; priority: number }[] = [
 			{ pill: ctxPill, vis: ctxVis, priority: 3 },
 			{ pill: telemetryPill, vis: teleVis, priority: 2 },
@@ -277,7 +284,6 @@ export class TopStatusBarComponent implements Component {
 
 		const activeRight: string[] = [];
 		let rightVis = 0;
-		// 优先放入高优先级模块
 		for (const item of [...rightItems].sort((a, b) => a.priority - b.priority)) {
 			const spaceNeeded = leftVis + rightVis + item.vis + 2;
 			if (spaceNeeded <= width) {
@@ -286,7 +292,6 @@ export class TopStatusBarComponent implements Component {
 			}
 		}
 
-		// 右侧保持原始排列顺序展示
 		const orderedRight = rightItems.filter(i => activeRight.includes(i.pill)).map(i => i.pill).reverse().join(" ");
 		const totalVis = leftVis + rightVis;
 
@@ -294,7 +299,7 @@ export class TopStatusBarComponent implements Component {
 			return [truncateToWidth(`${leftStr} ${orderedRight}`, width)];
 		}
 
-		// 中间纯净留白填充，两端对齐
+		// 中间留白自适应
 		const middleSpaces = Math.max(1, width - totalVis);
 		const fullLine = `${leftStr}\x1b[49m${" ".repeat(middleSpaces)}${orderedRight}\x1b[49m`;
 
@@ -458,6 +463,9 @@ export default function (pi: ExtensionAPI) {
 	pi.on("agent_settled", (event, ctx) => {
 		stopTimer();
 		sync(ctx, true);
+		if (state.startTime) {
+			state.durationMs = Date.now() - state.startTime;
+		}
 		state.status = event.aborted ? "aborted" : lastAssistantFailed ? "error" : "idle";
 		titleStatus = event.aborted ? "aborted" : lastAssistantFailed ? "error" : "done";
 		publishTitle();
