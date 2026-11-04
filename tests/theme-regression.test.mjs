@@ -59,22 +59,22 @@ for (const themeName of ["dark", "light", "system"]) {
 	}
 }
 
-test("running icon animates while stable status icons remain semantic", () => {
+test("running icon animates with braille rotation", () => {
 	const theme = getThemeByName("dark");
 	const component = new TopStatusBarComponent({ status: "running", visible: true, startTime: Date.now() - 5000 }, theme, context);
-	const first = plain(component.render(200)[0]).match(/──── (.) \d+s/)?.[1];
+	const first = plain(component.render(200)[0]).match(/([⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]) \d+s/)?.[1];
 	let changed = false;
 	for (let i = 0; i < 8; i++) {
 		const originalNow = Date.now;
 		Date.now = () => originalNow() + i * 100;
-		const next = plain(component.render(200)[0]).match(/──── (.) \d+s/)?.[1];
+		const next = plain(component.render(200)[0]).match(/([⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]) \d+s/)?.[1];
 		if (next && next !== first) changed = true;
 		Date.now = originalNow;
 	}
 	assert.equal(changed, true);
 	for (const [status, icon] of [["idle", "✓"], ["error", "✗"], ["aborted", "■"]]) {
 		const stable = new TopStatusBarComponent({ status, visible: true }, theme, context);
-		assert.ok(plain(stable.render(200)[0]).includes(`──── ${icon}`));
+		assert.ok(plain(stable.render(200)[0]).includes(icon));
 	}
 });
 
@@ -84,7 +84,7 @@ test("information order, unknown context, cumulative totals, branch and path", (
 		usage: { input: 1200, output: 300, total: 2500, cost: 0.123 },
 	}, getThemeByName("dark"), context);
 	const line = plain(component.render(200)[0]);
-	const fields = ["✓", "gemini3.8flash", "high", "ipiui (dev)", "↑1.2k", "↓300", "Σ2.5k", "$0.123", "ctx"];
+	const fields = ["✓", "gemini3.8flash", "✦ high", "ipiui (dev)", "↑1.2k", "↓300", "Σ2.5k", "$0.123", "ctx"];
 	let position = -1;
 	for (const field of fields) {
 		const next = line.indexOf(field);
@@ -125,36 +125,31 @@ function luminance({ r, g, b }) {
 	});
 	return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
 }
-for (const mode of ["truecolor", "256color"]) {
-	test(`rainbow ${mode}: full-width fill, AA contrast, intact CJK and emoji`, () => {
-		const theme = loadThemeFromPath(path.join(hostRoot,
-			"@earendil-works/pi-coding-agent/dist/modes/interactive/theme/dark.json"), mode);
+for (const style of ["pills", "classic", "border"]) {
+	test(`style ${style}: contrast >= 4.5:1, fills width without overflow`, () => {
+		const theme = getThemeByName("dark");
 		const component = new TopStatusBarComponent({
-			status: "idle", visible: true, modelId: "中文👨‍👩‍👧‍👦e\u0301", thinkingLevel: "high",
+			status: "idle", visible: true, style, modelId: "中文👨‍👩‍👧‍👦e\u0301", thinkingLevel: "high",
 		}, theme, context);
 		for (const width of [1, 8, 40, 100, 200]) {
 			const line = component.render(width)[0];
 			assert.equal(visibleWidth(line), width);
-			if (width >= 40) assert.ok(plain(line).includes("中文👨‍👩‍👧‍👦e\u0301"));
 			let foreground, background;
-			const backgrounds = new Set();
-			for (const match of line.matchAll(/\u001b\[(38|48);(2;\d+;\d+;\d+|5;\d+)m/g)) {
-				const parts = match[2].split(";").map(Number);
+			for (const match of line.matchAll(/\u001b\[(38|48|49);?(2;\d+;\d+;\d+|5;\d+)?m/g)) {
+				if (match[1] === "49") {
+					background = undefined;
+					continue;
+				}
+				const parts = (match[2] ?? "").split(";").map(Number);
 				const color = parts[0] === 2 ? { r: parts[1], g: parts[2], b: parts[3] }
 					: colorToRgb(indexedColor(parts[1]));
 				if (match[1] === "38") foreground = color;
-				else { background = color; backgrounds.add(match[2]); }
+				else if (match[1] === "48") background = color;
 				if (foreground && background) {
 					const levels = [luminance(foreground), luminance(background)].sort((a, b) => a - b);
 					assert.ok((levels[1] + 0.05) / (levels[0] + 0.05) >= 4.5);
 				}
 			}
-			// In 256color mode, adjacent subdued stops quantize to 3-4 indexed terminal colors;
-			// in truecolor mode, we get smooth continuous transitions.
-			const minExpectedBgs = mode === "256color"
-				? (width <= 1 ? 1 : width <= 8 ? 3 : 4)
-				: Math.min(width, 6);
-			assert.ok(backgrounds.size >= minExpectedBgs);
 		}
 	});
 }

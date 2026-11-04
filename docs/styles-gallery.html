@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>ipiui 状态栏方案预览画廊</title>
+  <style>
+    :root {
+      --bg: #0b0f17;
+      --card-bg: #131924;
+      --card-border: #1e293b;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif;
+      background: var(--bg);
+      color: var(--text-main);
+      padding: 32px 24px 60px;
+      line-height: 1.5;
+    }
+    .header {
+      max-width: 1200px;
+      margin: 0 auto 32px;
+    }
+    .header h1 {
+      font-size: 26px;
+      font-weight: 700;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header p {
+      color: var(--text-muted);
+      margin-top: 6px;
+      font-size: 14px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+    .category-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #e2e8f0;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 8px;
+    }
+    .grid {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .card-header {
+      padding: 12px 18px;
+      background: #182234;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      border-bottom: 1px solid var(--card-border);
+    }
+    .card-header .name {
+      font-weight: 700;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-header .desc {
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+    .terminal-window {
+      background: #090d15;
+      padding: 24px 20px;
+      font-family: "Cascadia Code", "Fira Code", Consolas, Monaco, monospace;
+      font-size: 14px;
+    }
+    .term-chat {
+      color: #64748b;
+      margin-bottom: 18px;
+      font-size: 13px;
+    }
+    .term-prompt {
+      color: #cbd5e1;
+      margin-top: 10px;
+      display: flex;
+      gap: 8px;
+    }
+    .term-prompt-line {
+      border-top: 1px solid #283347;
+      border-bottom: 1px solid #283347;
+      padding: 8px 12px;
+      margin-top: 4px;
+      color: #94a3b8;
+    }
+    
+    /* 样式通用 */
+    .bar-line {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      height: 32px;
+      white-space: nowrap;
+      overflow: hidden;
+      font-weight: 500;
+      border-radius: 4px;
+    }
+
+    /* 方案 1: Pure Classic (纯色字，无背景) */
+    .bar-pure-classic {
+      background: transparent;
+      border-top: 1px solid #1e293b;
+      border-bottom: 1px solid #1e293b;
+      gap: 12px;
+      padding: 0 8px;
+    }
+    .pure-status-ready { color: #4ade80; font-weight: 700; }
+    .pure-status-running { color: #f59e0b; font-weight: 700; }
+    .pure-model { color: #38bdf8; font-weight: 600; }
+    .pure-think { color: #fbbf24; }
+    .pure-project { color: #c084fc; }
+    .pure-tokens { color: #94a3b8; }
+    .pure-cost { color: #34d399; }
+    .pure-ctx { color: #64748b; }
+    .pure-sep { color: #334155; }
+    .fill-line { flex: 1; border-bottom: 1px dashed #334155; margin-left: 8px; }
+
+    /* 方案 2: Pure Minimalist Dots (圆点徽章隔断) */
+    .bar-pure-dots {
+      background: rgba(255,255,255,0.02);
+      border-left: 3px solid #38bdf8;
+      padding: 0 12px;
+      gap: 14px;
+    }
+    .pure-tag-symbol { color: #22c55e; font-size: 16px; font-weight: 900; }
+
+    /* 方案 3: Connected Blocks (Powerline 风格连环色块) */
+    .bar-powerline {
+      background: transparent;
+      padding: 0;
+      font-size: 13px;
+    }
+    .pl-seg {
+      display: inline-flex;
+      align-items: center;
+      height: 100%;
+      padding: 0 10px;
+      font-weight: 600;
+    }
+    .pl-arrow {
+      width: 0;
+      height: 0;
+      border-style: solid;
+      display: inline-block;
+    }
+    /* 莫兰迪色块配色 */
+    .pl-morandi-1 { background: #3b82f6; color: #ffffff; }
+    .pl-morandi-2 { background: #334155; color: #f1f5f9; }
+    .pl-morandi-3 { background: #475569; color: #f8fafc; }
+    .pl-morandi-4 { background: #1e293b; color: #cbd5e1; }
+    .pl-morandi-5 { background: #0f172a; color: #94a3b8; flex: 1; }
+
+    /* 马卡龙/清爽色块 */
+    .pl-macaron-1 { background: #2dd4bf; color: #042f2e; }
+    .pl-macaron-2 { background: #38bdf8; color: #082f49; }
+    .pl-macaron-3 { background: #818cf8; color: #1e1b4b; }
+    .pl-macaron-4 { background: #c084fc; color: #3b0764; }
+    .pl-macaron-5 { background: #1e293b; color: #94a3b8; flex: 1; }
+
+    /* 方案 4: Discrete Pills (独立微色块胶囊) */
+    .bar-pills {
+      background: transparent;
+      gap: 8px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      gap: 5px;
+    }
+    .pill-status-ready { background: rgba(34, 197, 94, 0.18); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+    .pill-status-run { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .pill-model { background: rgba(56, 189, 248, 0.12); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.25); }
+    .pill-think { background: rgba(234, 179, 8, 0.12); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.25); }
+    .pill-git { background: rgba(192, 132, 252, 0.12); color: #c084fc; border: 1px solid rgba(192, 132, 252, 0.25); }
+    .pill-usage { background: rgba(148, 163, 184, 0.1); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.2); }
+    .pill-ctx { background: rgba(100, 116, 139, 0.1); color: #94a3b8; }
+
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>🎨 ipiui 状态栏方案画廊</h1>
+    <p>针对您的终端分屏与日常编码精心设计的 4 种风格。每种风格对各信息块均做了独立语义着色，您可以直观对比有背景色与无背景色方案。</p>
+  </div>
+
+  <div class="container">
+
+    <!-- 方案类别 1: 无背景色方案 -->
+    <div>
+      <div class="category-title">
+        <span>✨ 方案类别 A：无背景色（Pure Transparent）- 干净清爽、原生极客感</span>
+      </div>
+      <div class="grid">
+
+        <!-- 方案 1 -->
+        <div class="card">
+          <div class="card-header">
+            <span class="name">方案 1 · Pure Classic (经典分段多色字)</span>
+            <span class="desc">类似 Starship / Pure 终端风格，无底色干扰，依靠不同色彩自然划分信息</span>
+          </div>
+          <div class="terminal-window">
+            <div class="term-chat">已列出当前工作目录的文件。可以开始下一步任务。</div>
+            
+            <!-- 状态行: 空闲 -->
+            <div class="bar-line bar-pure-classic">
+              <span class="pure-status-ready">✓</span>
+              <span class="pure-model">gemini-3.8-flash</span>
+              <span class="pure-think">⚡high</span>
+              <span class="pure-project">📁 ipiui (dev)</span>
+              <span class="pure-tokens">↑15.0M ↓167k Σ77.2M</span>
+              <span class="pure-cost">$21.12</span>
+              <span class="pure-ctx">ctx 15.6k/1.0M (2%)</span>
+              <div class="fill-line"></div>
+            </div>
+
+            <div class="term-prompt-line">git status</div>
+          </div>
+        </div>
+
+        <!-- 方案 2 -->
+        <div class="card">
+          <div class="card-header">
+            <span class="name">方案 2 · Pure Border Accent (带状态高亮竖条)</span>
+            <span class="desc">左侧边框用状态色高亮（空闲绿、运行中黄、错误红），右侧文字纯净多色排版</span>
+          </div>
+          <div class="terminal-window">
+            <div class="term-chat">正在执行 bash 工具检索代码...</div>
+            
+            <!-- 状态行: 运行中 -->
+            <div class="bar-line bar-pure-dots" style="border-left-color: #f59e0b;">
+              <span style="color: #f59e0b; font-weight: 700;">⠋ 6s (bash)</span>
+              <span class="pure-sep">·</span>
+              <span class="pure-model">claude-3-7-sonnet</span>
+              <span class="pure-sep">·</span>
+              <span class="pure-think" style="color: #f59e0b;">medium</span>
+              <span class="pure-sep">·</span>
+              <span class="pure-project">📁 ipiui (dev)</span>
+              <span class="pure-sep">·</span>
+              <span class="pure-tokens">↑22.0k ↓3.4k</span>
+              <span class="pure-sep">·</span>
+              <span class="pure-cost">$0.061</span>
+              <span class="pure-sep">·</span>
+              <span class="pure-ctx">ctx 24.5k/200k (12%)</span>
+              <div class="fill-line" style="border-bottom-style: solid; border-color: #1e293b;"></div>
+            </div>
+
+            <div class="term-prompt-line">npm test</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 方案类别 2: 有背景色方案 -->
+    <div>
+      <div class="category-title">
+        <span>🎨 方案类别 B：有背景色（Connected Blocks & Pills）- 模块分明、专业醒目</span>
+      </div>
+      <div class="grid">
+
+        <!-- 方案 3 -->
+        <div class="card">
+          <div class="card-header">
+            <span class="name">方案 3 · Powerline Blocks (连环色块 )</span>
+            <span class="desc">经典 Vim-airline / Powerline 风格色块拼接，每个模块一个独立底色与清晰文字</span>
+          </div>
+          <div class="terminal-window">
+            <div class="term-chat">Git 分支已切换至 dev。</div>
+            
+            <!-- 状态行: Powerline 连环色块 -->
+            <div class="bar-line bar-powerline">
+              <span class="pl-seg pl-macaron-1">✓ READY</span>
+              <span style="background: #38bdf8; color: #2dd4bf; font-size: 18px; line-height: 1;"></span>
+              <span class="pl-seg pl-macaron-2">gemini-3.8-flash · high</span>
+              <span style="background: #818cf8; color: #38bdf8; font-size: 18px; line-height: 1;"></span>
+              <span class="pl-seg pl-macaron-3"> ipiui (dev)</span>
+              <span style="background: #c084fc; color: #818cf8; font-size: 18px; line-height: 1;"></span>
+              <span class="pl-seg pl-macaron-4">↑15M ↓167k · $21.12</span>
+              <span style="background: #1e293b; color: #c084fc; font-size: 18px; line-height: 1;"></span>
+              <span class="pl-seg pl-macaron-5">ctx 15.6k/1.0M (2%)</span>
+            </div>
+
+            <div class="term-prompt-line">npm run build</div>
+          </div>
+        </div>
+
+        <!-- 方案 4 -->
+        <div class="card">
+          <div class="card-header">
+            <span class="name">方案 4 · Discrete Pills (现代独立微胶囊块)</span>
+            <span class="desc">现代主流 IDE 最推崇的微胶囊设计：半透明弱色底 + 彩色字体，不霸占整行，极度精致</span>
+          </div>
+          <div class="terminal-window">
+            <div class="term-chat">项目构建完成，准备就绪。</div>
+            
+            <!-- 状态行: 现代微胶囊 -->
+            <div class="bar-line bar-pills">
+              <span class="pill pill-status-ready">● READY</span>
+              <span class="pill pill-model">🤖 gemini-3.8-flash</span>
+              <span class="pill pill-think">🧠 high</span>
+              <span class="pill pill-git"> dev</span>
+              <span class="pill pill-usage">📊 ↑15M ↓167k · $21.12</span>
+              <span class="pill pill-ctx">ctx 15.6k (2%)</span>
+              <div class="fill-line" style="border-bottom: 1px solid #1e293b;"></div>
+            </div>
+
+            <div class="term-prompt-line">cargo build</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>

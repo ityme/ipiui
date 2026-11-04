@@ -11,6 +11,8 @@ import {
 	visibleWidth,
 } from "@earendil-works/pi-tui";
 
+export type StatusBarStyle = "pills" | "classic" | "border";
+
 export interface TopBarState {
 	status: "idle" | "running" | "error" | "aborted";
 	errorMessage?: string;
@@ -21,6 +23,7 @@ export interface TopBarState {
 	gitBranch?: string | null;
 	cwd?: string;
 	visible: boolean;
+	style: StatusBarStyle;
 	usage?: UsageTotals;
 }
 
@@ -49,62 +52,53 @@ export function collectUsage(entries: ReturnType<ExtensionContext["sessionManage
 	return totals;
 }
 
-const RAW_RAINBOW = [
-	rgbColor(255, 95, 120),  // coral / red
-	rgbColor(255, 160, 70),  // amber / orange
-	rgbColor(245, 215, 80),  // yellow
-	rgbColor(70, 215, 140),  // emerald / green
-	rgbColor(60, 195, 245),  // sky / cyan
-	rgbColor(130, 150, 250), // indigo / blue
-	rgbColor(215, 120, 240), // violet / purple
-];
-
-const DARK_BASE_BG = rgbColor(20, 24, 33);
-const LIGHT_BASE_BG = rgbColor(245, 247, 250);
-
-const DARK_RAINBOW_STOPS = RAW_RAINBOW.map(c => mixColors(DARK_BASE_BG, c, 0.28, "srgb"));
-const LIGHT_RAINBOW_STOPS = RAW_RAINBOW.map(c => mixColors(LIGHT_BASE_BG, c, 0.22, "srgb"));
-
-const DARK_INK = rgbColor(240, 243, 248);
-const LIGHT_INK = rgbColor(24, 28, 44);
-
 const BRAILLE_SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
-export function rainbowBackground(column: number, width: number, isDark = true, timeMs = 0) {
-	const stops = isDark ? DARK_RAINBOW_STOPS : LIGHT_RAINBOW_STOPS;
-	// Smooth flow: one full shift cycle every 4500ms
-	const shift = (timeMs / 4500) % 1;
-	const norm = column / Math.max(1, width - 1);
-	const position = ((norm + shift) % 1) * (stops.length - 1);
-	const index = Math.min(stops.length - 2, Math.floor(position));
-	return mixColors(stops[index], stops[index + 1], position - index, "srgb");
+const DARK_CANVAS = rgbColor(15, 19, 26);
+const LIGHT_CANVAS = rgbColor(248, 250, 252);
+
+interface SemanticColorSet {
+	fg: Color;
+	tint: Color;
 }
 
-function thinkingTextColor(level: string | undefined, isDark: boolean): Color {
-	const normalized = (level ?? "off").toLowerCase();
+function getSemanticPalette(isDark: boolean) {
 	if (isDark) {
-		if (normalized === "max" || normalized === "xhigh" || normalized === "high") {
-			return rgbColor(224, 242, 254); // sky-100: crisp contrast (>= 5.9:1) even on quantized 256color terminals
-		}
-		if (normalized === "medium") {
-			return rgbColor(254, 240, 138); // yellow-200
-		}
-		if (normalized === "low") {
-			return rgbColor(187, 247, 208); // green-200
-		}
-		return rgbColor(226, 232, 240); // slate-200
+		return {
+			ready: { fg: rgbColor(74, 222, 128), tint: rgbColor(34, 197, 94) },
+			running: { fg: rgbColor(251, 191, 36), tint: rgbColor(245, 158, 11) },
+			error: { fg: rgbColor(248, 113, 113), tint: rgbColor(239, 68, 68) },
+			aborted: { fg: rgbColor(251, 146, 60), tint: rgbColor(249, 115, 22) },
+			model: { fg: rgbColor(56, 189, 248), tint: rgbColor(14, 165, 233) },
+			thinkHigh: { fg: rgbColor(224, 242, 254), tint: rgbColor(56, 189, 248) },
+			thinkMed: { fg: rgbColor(254, 240, 138), tint: rgbColor(234, 179, 8) },
+			thinkLow: { fg: rgbColor(187, 247, 208), tint: rgbColor(34, 197, 94) },
+			thinkOff: { fg: rgbColor(148, 163, 184), tint: rgbColor(100, 116, 139) },
+			project: { fg: rgbColor(192, 132, 252), tint: rgbColor(168, 85, 247) },
+			tokens: { fg: rgbColor(203, 213, 225), tint: rgbColor(148, 163, 184) },
+			cost: { fg: rgbColor(52, 211, 153), tint: rgbColor(16, 185, 129) },
+			ctx: { fg: rgbColor(148, 163, 184), tint: rgbColor(100, 116, 139) },
+			separator: rgbColor(71, 85, 105),
+			borderLine: rgbColor(51, 65, 85),
+		};
 	} else {
-		if (normalized === "max" || normalized === "xhigh" || normalized === "high") {
-			return rgbColor(3, 105, 161); // sky-700
-		}
-		if (normalized === "medium") {
-			return rgbColor(180, 83, 9); // amber-700
-		}
-		if (normalized === "low") {
-			return rgbColor(21, 128, 61); // green-700
-		}
-		return rgbColor(71, 85, 105); // slate-600
+		return {
+			ready: { fg: rgbColor(22, 101, 52), tint: rgbColor(187, 247, 208) },
+			running: { fg: rgbColor(146, 64, 14), tint: rgbColor(254, 240, 138) },
+			error: { fg: rgbColor(153, 27, 27), tint: rgbColor(254, 202, 202) },
+			aborted: { fg: rgbColor(154, 52, 18), tint: rgbColor(254, 215, 170) },
+			model: { fg: rgbColor(3, 105, 161), tint: rgbColor(186, 230, 253) },
+			thinkHigh: { fg: rgbColor(3, 105, 161), tint: rgbColor(186, 230, 253) },
+			thinkMed: { fg: rgbColor(133, 77, 14), tint: rgbColor(254, 240, 138) },
+			thinkLow: { fg: rgbColor(22, 101, 52), tint: rgbColor(187, 247, 208) },
+			thinkOff: { fg: rgbColor(71, 85, 105), tint: rgbColor(226, 232, 240) },
+			project: { fg: rgbColor(107, 33, 168), tint: rgbColor(233, 213, 255) },
+			tokens: { fg: rgbColor(51, 65, 85), tint: rgbColor(226, 232, 240) },
+			cost: { fg: rgbColor(6, 95, 70), tint: rgbColor(167, 243, 208) },
+			ctx: { fg: rgbColor(71, 85, 105), tint: rgbColor(226, 232, 240) },
+			separator: rgbColor(203, 213, 225),
+			borderLine: rgbColor(226, 232, 240),
+		};
 	}
 }
 
@@ -130,19 +124,28 @@ export class TopStatusBarComponent implements Component {
 		const st = this.state;
 		const now = Date.now();
 		const isDark = this.theme.appearance !== "light";
-		const baseInk = isDark ? DARK_INK : LIGHT_INK;
+		const palette = getSemanticPalette(isDark);
+		const canvas = isDark ? DARK_CANVAS : LIGHT_CANVAS;
 
-		let status = "✓";
+		// 1. Status icon & text
+		let statusIcon = "✓";
+		let statusLabel = "";
+		let statusColors: SemanticColorSet = palette.ready;
 		if (st.status === "running") {
 			const elapsed = st.startTime ? Math.floor((now - st.startTime) / 1000) : 0;
 			const frame = BRAILLE_SPINNER[Math.floor(now / 100) % BRAILLE_SPINNER.length];
-			status = `${frame} ${elapsed}s${st.activeTool ? ` ${singleLine(st.activeTool)}` : ""}`;
+			statusIcon = frame;
+			statusLabel = `${elapsed}s${st.activeTool ? ` ${singleLine(st.activeTool)}` : ""}`;
+			statusColors = palette.running;
 		} else if (st.status === "error") {
-			status = "✗";
+			statusIcon = "✗";
+			statusColors = palette.error;
 		} else if (st.status === "aborted") {
-			status = "■";
+			statusIcon = "■";
+			statusColors = palette.aborted;
 		}
 
+		// 2. Data chunks
 		const usage = st.usage ?? { input: 0, output: 0, total: 0, cost: 0 };
 		const model = singleLine(st.modelId?.split("/").pop() || "no-model");
 		const cwdRaw = st.cwd ?? this.context.cwd ?? "?";
@@ -156,75 +159,169 @@ export class TopStatusBarComponent implements Component {
 			context = `ctx ${shortCount(contextUsage.tokens)}/${shortCount(contextUsage.contextWindow)} (${Math.round(contextUsage.percent ?? (contextUsage.tokens / contextUsage.contextWindow) * 100)}%)`;
 		}
 
-		const thinkStr = st.thinkingLevel ?? "off";
-		const parts = [
-			model,
-			thinkStr,
-			projectWithBranch,
-			`↑${shortCount(usage.input)}`,
-			`↓${shortCount(usage.output)}`,
-			`Σ${shortCount(usage.total)}`,
-			`$${usage.cost.toFixed(3)}`,
-			context,
+		// 3. Thinking level semantic color and sparkle icon (✦ replaces 🧠)
+		const thinkLevel = (st.thinkingLevel ?? "off").toLowerCase();
+		let thinkColors: SemanticColorSet = palette.thinkOff;
+		if (thinkLevel === "high" || thinkLevel === "max" || thinkLevel === "xhigh") {
+			thinkColors = palette.thinkHigh;
+		} else if (thinkLevel === "medium") {
+			thinkColors = palette.thinkMed;
+		} else if (thinkLevel === "low") {
+			thinkColors = palette.thinkLow;
+		}
+		const thinkText = `✦ ${st.thinkingLevel ?? "off"}`;
+
+		// 4. Assemble structured segments
+		interface Chunk {
+			id: string;
+			text: string;
+			colors: SemanticColorSet;
+			bold?: boolean;
+		}
+
+		const statusText = statusLabel ? `${statusIcon} ${statusLabel}` : statusIcon;
+		const chunks: Chunk[] = [
+			{ id: "status", text: statusText, colors: statusColors, bold: true },
+			{ id: "model", text: model, colors: palette.model, bold: true },
+			{ id: "think", text: thinkText, colors: thinkColors, bold: true },
+			{ id: "project", text: `📁 ${projectWithBranch}`, colors: palette.project },
+			{ id: "tokens", text: `↑${shortCount(usage.input)} ↓${shortCount(usage.output)} Σ${shortCount(usage.total)}`, colors: palette.tokens },
+			{ id: "cost", text: `$${usage.cost.toFixed(3)}`, colors: palette.cost },
+			{ id: "ctx", text: context, colors: palette.ctx },
 		];
 
-		const prefix = `──── ${status} `;
-		const buildBody = () => prefix + parts.join(" · ") + " ";
-		
-		if (visibleWidth(buildBody()) + 4 > width) {
-			parts[0] = truncateToWidth(model, Math.max(8, Math.min(20, Math.floor(width * 0.18))), "…");
-		}
-		// The first fields always survive: status, model, thinking, project(branch). Drop trailing details first.
-		while (parts.length > 3 && visibleWidth(buildBody()) + 4 > width) {
-			parts.pop();
-		}
-
 		if (st.status === "error" && st.errorMessage) {
-			const reason = `· ${singleLine(st.errorMessage)} `;
-			if (visibleWidth(buildBody() + reason) + 4 <= width) {
-				parts.push(singleLine(st.errorMessage));
+			chunks.push({ id: "error", text: `Reason: ${singleLine(st.errorMessage)}`, colors: palette.error });
+		}
+
+		// Truncate model on narrow widths
+		if (width < 90) {
+			const m = chunks.find(c => c.id === "model");
+			if (m) m.text = truncateToWidth(m.text, Math.max(6, Math.min(16, Math.floor(width * 0.18))), "…");
+		}
+
+		const style = st.style || "pills";
+
+		// --- Style 4: Discrete Pills (Default) ---
+		if (style === "pills") {
+			let line = "";
+			let currentWidth = 0;
+			const tintRatio = isDark ? 0.20 : 0.25;
+
+			for (let i = 0; i < chunks.length; i++) {
+				const chunk = chunks[i]!;
+				const rawSeg = ` ${chunk.text} `;
+				const segVis = visibleWidth(rawSeg);
+				const neededSpace = currentWidth === 0 ? segVis : segVis + 1; // 1 space gap
+
+				if (currentWidth > 0 && currentWidth + neededSpace > width) {
+					// Drop lower-priority details if width is tight
+					if (i >= 4) break;
+				}
+
+				if (currentWidth > 0) {
+					line += " ";
+					currentWidth += 1;
+				}
+
+				const pillBg = mixColors(canvas, chunk.colors.tint, tintRatio, "srgb");
+				line += this.theme.style(rawSeg, {
+					fg: chunk.colors.fg,
+					bg: pillBg,
+					bold: chunk.bold ?? false,
+				});
+				currentWidth += segVis;
 			}
+
+			// Trailing border fill: reset background so terminal background applies cleanly
+			if (currentWidth < width) {
+				const fillCount = width - currentWidth;
+				line += "\x1b[49m" + this.theme.style("─".repeat(fillCount), {
+					fg: palette.borderLine,
+				});
+			}
+
+			return [truncateToWidth(line, width)];
 		}
 
-		const bodyText = buildBody();
-		const bodyVis = visibleWidth(bodyText);
-		const remainingFill = Math.max(0, width - bodyVis);
-		const fullRaw = bodyText + "─".repeat(remainingFill);
+		// --- Style 2: Pure Border Accent (Left indicator line + Clean colored text) ---
+		if (style === "border") {
+			let line = this.theme.style("▌ ", { fg: statusColors.fg, bold: true });
+			let currentWidth = 2;
 
-		const text = stripTerminalSequences(truncateToWidth(fullRaw, width));
-		const padded = text + "─".repeat(Math.max(0, width - visibleWidth(text)));
-		const prefixWidth = visibleWidth(prefix);
+			for (let i = 0; i < chunks.length; i++) {
+				const chunk = chunks[i]!;
+				const rawSeg = chunk.text;
+				const segVis = visibleWidth(rawSeg);
+				const neededSpace = currentWidth === 2 ? segVis : segVis + 3; // " · "
 
-		// Calculate think range within fullRaw to apply dedicated semantic color
-		const modelIndex = fullRaw.indexOf(` ${model} · `);
-		const thinkStart = modelIndex >= 0 ? modelIndex + 1 + visibleWidth(model) + 3 : -1;
-		const thinkEnd = thinkStart >= 0 ? thinkStart + visibleWidth(thinkStr) : -1;
-		const thinkColor = thinkingTextColor(st.thinkingLevel, isDark);
+				if (currentWidth > 2 && currentWidth + neededSpace > width) {
+					if (i >= 4) break;
+				}
 
-		let line = "";
-		let column = 0;
-		for (const { segment } of graphemes.segment(padded)) {
-			const segWidth = visibleWidth(segment);
-			const bg = rainbowBackground(column, width, isDark, now);
-			const isPrefix = column < prefixWidth;
-			const isThink = column >= thinkStart && (column + segWidth) <= thinkEnd;
-			const fg = isThink ? thinkColor : baseInk;
+				if (currentWidth > 2) {
+					line += this.theme.style(" · ", { fg: palette.separator });
+					currentWidth += 3;
+				}
 
-			line += this.theme.style(segment, {
-				fg,
-				bg,
-				bold: isPrefix || isThink,
+				line += this.theme.style(rawSeg, {
+					fg: chunk.colors.fg,
+					bold: chunk.bold ?? false,
+				});
+				currentWidth += segVis;
+			}
+
+			if (currentWidth < width) {
+				const fillCount = width - currentWidth;
+				line += "\x1b[49m" + this.theme.style("─".repeat(fillCount), { fg: palette.borderLine });
+			}
+
+			return [truncateToWidth(line, width)];
+		}
+
+		// --- Style 1: Pure Classic (No background, semantic colored text) ---
+		let line = this.theme.style("──── ", { fg: palette.borderLine });
+		let currentWidth = 5;
+
+		for (let i = 0; i < chunks.length; i++) {
+			const chunk = chunks[i]!;
+			const rawSeg = chunk.text;
+			const segVis = visibleWidth(rawSeg);
+			const neededSpace = currentWidth === 5 ? segVis : segVis + 3; // " · "
+
+			if (currentWidth > 5 && currentWidth + neededSpace > width) {
+				if (i >= 4) break;
+			}
+
+			if (currentWidth > 5) {
+				line += this.theme.style(" · ", { fg: palette.separator });
+				currentWidth += 3;
+			}
+
+			line += this.theme.style(rawSeg, {
+				fg: chunk.colors.fg,
+				bold: chunk.bold ?? false,
 			});
-			column += segWidth;
+			currentWidth += segVis;
 		}
-		return [line];
+
+		if (currentWidth < width) {
+			const fillCount = width - currentWidth;
+			line += "\x1b[49m" + this.theme.style("─".repeat(fillCount), { fg: palette.borderLine });
+		}
+
+		return [truncateToWidth(line, width)];
 	}
 
 	invalidate(): void {}
 }
 
 export default function (pi: ExtensionAPI) {
-	const state: TopBarState = { status: "idle", visible: true };
+	const state: TopBarState = {
+		status: "idle",
+		visible: true,
+		style: "pills", // 默认方案 4 (Discrete Pills)
+	};
 	let currentContext: ExtensionContext | null = null;
 	let tuiInstance: TUI | null = null;
 	let bar: TopStatusBarComponent | null = null;
@@ -239,7 +336,6 @@ export default function (pi: ExtensionAPI) {
 	let titleStatus: TabStatus = "idle";
 	let titleHeartbeat: ReturnType<typeof setInterval> | undefined;
 	let lastPublishedTitle = "";
-
 	let tabGroupDirectoryRoot: string | undefined = process.env.IPIUI_TEST_GROUP_ROOT;
 
 	const writeTitle = (title: string) => {
@@ -278,7 +374,7 @@ export default function (pi: ExtensionAPI) {
 	};
 	const startIconTimer = () => {
 		if (iconTimer) clearInterval(iconTimer);
-		// 100ms smooth braille rotation & flowing gradient updates
+		// 100ms smooth braille rotation updates
 		iconTimer = setInterval(redraw, 100);
 		iconTimer.unref();
 	};
@@ -334,6 +430,7 @@ export default function (pi: ExtensionAPI) {
 		if (process.env.IPIUI_TEST_GROUP_ROOT) {
 			tabGroupDirectoryRoot = process.env.IPIUI_TEST_GROUP_ROOT;
 		}
+		// 自动加入默认群组 'all'
 		if (groupName) await joinTitleGroup(groupName);
 		if (state.status === "running") startIconTimer();
 		redraw();
@@ -457,16 +554,23 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 	pi.registerCommand("topbar", {
-		description: "Toggle the status row above the editor (/topbar [on|off|toggle])",
+		description: "Toggle or change status bar style (/topbar [on|off|toggle|pills|classic|border])",
 		handler: async (args, ctx) => {
 			const action = args.trim().toLowerCase();
-			if (!["", "on", "off", "toggle"].includes(action)) {
-				ctx.ui.notify("Usage: /topbar [on|off|toggle]", "warning");
+			if (["pills", "classic", "border"].includes(action)) {
+				state.style = action as StatusBarStyle;
+				state.visible = true;
+				ctx.ui.notify(`Status bar style: ${state.style}`, "info");
+				redraw();
 				return;
 			}
-			sync(ctx, true);
-			state.visible = action === "on" ? true : action === "off" ? false : !state.visible;
-			redraw();
+			if (["", "on", "off", "toggle"].includes(action)) {
+				state.visible = action === "on" ? true : action === "off" ? false : !state.visible;
+				ctx.ui.notify(`Status bar: ${state.visible ? "ON" : "OFF"} (${state.style})`, "info");
+				redraw();
+				return;
+			}
+			ctx.ui.notify("Usage: /topbar [on|off|toggle|pills|classic|border]", "warning");
 		},
 	});
 }
