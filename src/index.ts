@@ -45,7 +45,6 @@ export function collectUsage(entries: ReturnType<ExtensionContext["sessionManage
 		if (!usage) continue;
 		totals.input += usage.input;
 		totals.output += usage.output;
-		// Reasoning tokens are already included in output; never add them twice.
 		totals.total += usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
 		totals.cost += usage.cost.total;
 	}
@@ -54,7 +53,7 @@ export function collectUsage(entries: ReturnType<ExtensionContext["sessionManage
 
 const BRAILLE_SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-const DARK_CANVAS = rgbColor(15, 19, 26);
+const DARK_CANVAS = rgbColor(9, 11, 16);
 const LIGHT_CANVAS = rgbColor(248, 250, 252);
 
 interface SemanticColorSet {
@@ -65,59 +64,57 @@ interface SemanticColorSet {
 function getSemanticPalette(isDark: boolean) {
 	if (isDark) {
 		return {
-			canvasBg: rgbColor(12, 16, 26),
-			ready: { fg: rgbColor(74, 222, 128), tint: rgbColor(16, 185, 129) },
-			running: { fg: rgbColor(251, 191, 36), tint: rgbColor(245, 158, 11) },
+			canvasBg: rgbColor(9, 11, 16),
+			running: { fg: rgbColor(52, 211, 153), tint: rgbColor(16, 185, 129) },
+			ready: { fg: rgbColor(148, 163, 184), tint: rgbColor(30, 41, 59) },
 			error: { fg: rgbColor(248, 113, 113), tint: rgbColor(239, 68, 68) },
 			aborted: { fg: rgbColor(251, 146, 60), tint: rgbColor(249, 115, 22) },
+			
 			project: { fg: rgbColor(241, 245, 249), tint: rgbColor(28, 35, 51) },
 			branch: { fg: rgbColor(56, 189, 248), tint: rgbColor(14, 165, 233) },
-			model: { fg: rgbColor(192, 132, 252), tint: rgbColor(168, 85, 247) },
-			thinkHigh: { fg: rgbColor(129, 140, 248), tint: rgbColor(99, 102, 241) },
-			thinkMed: { fg: rgbColor(251, 191, 36), tint: rgbColor(234, 179, 8) },
-			thinkLow: { fg: rgbColor(74, 222, 128), tint: rgbColor(16, 185, 129) },
-			thinkOff: { fg: rgbColor(148, 163, 184), tint: rgbColor(100, 116, 139) },
-			tokens: { fg: rgbColor(203, 213, 225), tint: rgbColor(148, 163, 184) },
-			cost: { fg: rgbColor(52, 211, 153), tint: rgbColor(16, 185, 129) },
-			ctx: { fg: rgbColor(148, 163, 184), tint: rgbColor(100, 116, 139) },
+
+			model: { fg: rgbColor(233, 213, 255), tint: rgbColor(168, 85, 247) },
+			thinkTag: { fg: rgbColor(129, 140, 248), bg: rgbColor(22, 27, 46) },
+
 			tokenIn: rgbColor(96, 165, 250),
 			tokenOut: rgbColor(52, 211, 153),
-			tokenSum: rgbColor(100, 116, 139),
+			tokenSum: rgbColor(156, 163, 175),
 			tokenCost: rgbColor(251, 191, 36),
-			tokensBg: rgbColor(19, 24, 36),
-			ctxLow: rgbColor(16, 185, 129),
-			ctxMed: rgbColor(245, 158, 11),
-			ctxHigh: rgbColor(239, 68, 68),
-			ctxTrack: rgbColor(30, 38, 56),
-			separator: rgbColor(51, 65, 85),
-			borderLine: rgbColor(33, 41, 57),
+			telemetryBg: rgbColor(19, 24, 36),
+
+			ctxLow: rgbColor(45, 212, 191),   // cyan-emerald
+			ctxMed: rgbColor(251, 191, 36),   // amber
+			ctxHigh: rgbColor(249, 115, 22),  // orange-red (92%)
+			ctxTrack: rgbColor(148, 163, 184),
+
+			separator: rgbColor(148, 163, 184),
+			borderLine: rgbColor(30, 38, 56),
 		};
 	} else {
 		return {
 			canvasBg: rgbColor(248, 250, 252),
-			ready: { fg: rgbColor(22, 101, 52), tint: rgbColor(187, 247, 208) },
-			running: { fg: rgbColor(146, 64, 14), tint: rgbColor(254, 240, 138) },
-			error: { fg: rgbColor(153, 27, 27), tint: rgbColor(254, 202, 202) },
-			aborted: { fg: rgbColor(154, 52, 18), tint: rgbColor(254, 215, 170) },
+			running: { fg: rgbColor(5, 150, 105), tint: rgbColor(209, 250, 229) },
+			ready: { fg: rgbColor(71, 85, 105), tint: rgbColor(241, 245, 249) },
+			error: { fg: rgbColor(220, 38, 38), tint: rgbColor(254, 226, 226) },
+			aborted: { fg: rgbColor(217, 119, 6), tint: rgbColor(254, 243, 199) },
+
 			project: { fg: rgbColor(15, 23, 42), tint: rgbColor(226, 232, 240) },
-			branch: { fg: rgbColor(2, 132, 199), tint: rgbColor(186, 230, 253) },
-			model: { fg: rgbColor(107, 33, 168), tint: rgbColor(233, 213, 255) },
-			thinkHigh: { fg: rgbColor(67, 56, 202), tint: rgbColor(224, 231, 255) },
-			thinkMed: { fg: rgbColor(146, 64, 14), tint: rgbColor(254, 240, 138) },
-			thinkLow: { fg: rgbColor(22, 101, 52), tint: rgbColor(187, 247, 208) },
-			thinkOff: { fg: rgbColor(71, 85, 105), tint: rgbColor(226, 232, 240) },
-			tokens: { fg: rgbColor(51, 65, 85), tint: rgbColor(226, 232, 240) },
-			cost: { fg: rgbColor(6, 95, 70), tint: rgbColor(167, 243, 208) },
-			ctx: { fg: rgbColor(71, 85, 105), tint: rgbColor(226, 232, 240) },
+			branch: { fg: rgbColor(2, 132, 199), tint: rgbColor(224, 242, 254) },
+
+			model: { fg: rgbColor(107, 33, 168), tint: rgbColor(243, 232, 255) },
+			thinkTag: { fg: rgbColor(67, 56, 202), bg: rgbColor(238, 242, 255) },
+
 			tokenIn: rgbColor(37, 99, 235),
 			tokenOut: rgbColor(5, 150, 105),
-			tokenSum: rgbColor(148, 163, 184),
-			tokenCost: rgbColor(217, 119, 6),
-			tokensBg: rgbColor(241, 245, 249),
-			ctxLow: rgbColor(22, 101, 52),
+			tokenSum: rgbColor(100, 116, 139),
+			tokenCost: rgbColor(180, 83, 9),
+			telemetryBg: rgbColor(241, 245, 249),
+
+			ctxLow: rgbColor(13, 148, 136),
 			ctxMed: rgbColor(180, 83, 9),
-			ctxHigh: rgbColor(185, 28, 28),
+			ctxHigh: rgbColor(194, 65, 12),
 			ctxTrack: rgbColor(226, 232, 240),
+
 			separator: rgbColor(203, 213, 225),
 			borderLine: rgbColor(226, 232, 240),
 		};
@@ -149,245 +146,159 @@ export class TopStatusBarComponent implements Component {
 		const palette = getSemanticPalette(isDark);
 		const canvas = isDark ? DARK_CANVAS : LIGHT_CANVAS;
 
-		// 1. Status icon & text
+		// 1. Status 徽章（一比一复刻：盲文动画 + 状态大写 + 发光圆点）
 		let statusIcon = "✓";
-		let statusLabel = "";
+		let statusLabel = "READY";
 		let statusColors: SemanticColorSet = palette.ready;
 		if (st.status === "running") {
-			const elapsed = st.startTime ? Math.floor((now - st.startTime) / 1000) : 0;
 			const frame = BRAILLE_SPINNER[Math.floor(now / 100) % BRAILLE_SPINNER.length];
 			statusIcon = frame;
-			statusLabel = `${elapsed}s${st.activeTool ? ` ${singleLine(st.activeTool)}` : ""}`;
+			statusLabel = st.activeTool ? `RUNNING (${singleLine(st.activeTool)})` : "RUNNING";
 			statusColors = palette.running;
 		} else if (st.status === "error") {
 			statusIcon = "✗";
+			statusLabel = "ERROR";
 			statusColors = palette.error;
 		} else if (st.status === "aborted") {
 			statusIcon = "■";
+			statusLabel = "STOPPED";
 			statusColors = palette.aborted;
 		}
 
-		// 2. Data chunks
+		// 2. 项目与分支
 		const usage = st.usage ?? { input: 0, output: 0, total: 0, cost: 0 };
 		const model = singleLine(st.modelId?.split("/").pop() || "no-model");
 		const cwdRaw = st.cwd ?? this.context.cwd ?? "?";
 		const cwdBasename = singleLine(cwdRaw.split(/[\\/]/).filter(Boolean).pop() || cwdRaw);
-		const branch = singleLine(st.gitBranch ?? "");
-		const projectWithBranch = branch ? `${cwdBasename} (${branch})` : cwdBasename;
+		const branch = singleLine(st.gitBranch ?? "dev");
 
-		let context = "ctx ?";
+		// 3. 上下文进度与比例
+		let ctxTokens = 0;
+		let ctxWindow = 1048576;
 		let ctxPercent = 0;
 		const contextUsage = this.context.getContextUsage();
-		if (contextUsage && contextUsage.tokens !== null && contextUsage.contextWindow > 0) {
-			ctxPercent = Math.round(contextUsage.percent ?? (contextUsage.tokens / contextUsage.contextWindow) * 100);
-			context = `ctx ${shortCount(contextUsage.tokens)}/${shortCount(contextUsage.contextWindow)} (${ctxPercent}%)`;
+		if (contextUsage) {
+			if (contextUsage.contextWindow > 0) ctxWindow = contextUsage.contextWindow;
+			if (contextUsage.tokens !== null) {
+				ctxTokens = contextUsage.tokens;
+				ctxPercent = Math.round(contextUsage.percent ?? (ctxTokens / ctxWindow) * 100);
+			}
 		}
 
-		// 3. Thinking level semantic color and sparkle icon (✦ replaces 🧠)
-		const thinkLevel = (st.thinkingLevel ?? "off").toLowerCase();
-		let thinkColors: SemanticColorSet = palette.thinkOff;
-		if (thinkLevel === "high" || thinkLevel === "max" || thinkLevel === "xhigh") {
-			thinkColors = palette.thinkHigh;
-		} else if (thinkLevel === "medium") {
-			thinkColors = palette.thinkMed;
-		} else if (thinkLevel === "low") {
-			thinkColors = palette.thinkLow;
-		}
-		const thinkText = `✦ ${st.thinkingLevel ?? "off"}`;
+		// 上下文进度条 (8个字符，高压变色)
+		const ctxTotalBlocks = 8;
+		const ctxFilled = Math.max(0, Math.min(ctxTotalBlocks, Math.round((ctxPercent / 100) * ctxTotalBlocks)));
+		const ctxEmpty = ctxTotalBlocks - ctxFilled;
+		const ctxColor = ctxPercent > 80 ? palette.ctxHigh : ctxPercent > 60 ? palette.ctxMed : palette.ctxLow;
 
-		// Assemble chunks
-		interface Chunk {
-			id: string;
-			text: string;
-			colors: SemanticColorSet;
-			bold?: boolean;
-		}
+		// 4. 构建渲染模块
+		const pillBg = (tint: Color) => mixColors(canvas, tint, isDark ? 0.16 : 0.22, "srgb");
 
-		const statusText = statusLabel ? `${statusIcon} ${statusLabel}` : statusIcon;
-		const leftChunks: Chunk[] = [
-			{ id: "status", text: statusText, colors: statusColors, bold: true },
-			{ id: "project", text: `📁 ${cwdBasename}`, colors: palette.project, bold: true },
-			{ id: "branch", text: ` ${branch || "no-git"}`, colors: palette.branch },
+		// 左侧模块
+		// (A) 状态胶囊: [ ⠋ RUNNING ● ]
+		const statusPill = this.theme.style(` ${statusIcon} ${statusLabel} ● `, {
+			fg: statusColors.fg,
+			bg: pillBg(statusColors.tint),
+			bold: true,
+		});
+		const statusVis = visibleWidth(` ${statusIcon} ${statusLabel} ● `);
+
+		// (B) 项目胶囊: [ 📁 ipiui ]
+		const projectPill = this.theme.style(` 📁 ${cwdBasename} `, {
+			fg: palette.project.fg,
+			bg: pillBg(palette.project.tint),
+			bold: true,
+		});
+		const projectVis = visibleWidth(` 📁 ${cwdBasename} `);
+
+		// (C) 分支胶囊: [  dev ]
+		const branchPill = this.theme.style(`  ${branch} `, {
+			fg: palette.branch.fg,
+			bg: pillBg(palette.branch.tint),
+			bold: false,
+		});
+		const branchVis = visibleWidth(`  ${branch} `);
+
+		// 右侧模块
+		// (D) 模型 + 思考复合胶囊: [ gemini-3.8-flash med ]
+		const thinkLevelStr = (st.thinkingLevel ?? "med").toLowerCase();
+		const thinkShort = thinkLevelStr === "medium" ? "med" : thinkLevelStr;
+		const modelPart = this.theme.style(` ${model} `, {
+			fg: palette.model.fg,
+			bg: pillBg(palette.model.tint),
+			bold: true,
+		});
+		const thinkPart = this.theme.style(` ${thinkShort} `, {
+			fg: palette.thinkTag.fg,
+			bg: palette.thinkTag.bg,
+			bold: true,
+		});
+		const modelGroupPill = `${modelPart}${thinkPart} `;
+		const modelGroupVis = visibleWidth(` ${model}  ${thinkShort}  `);
+
+		// (E) 吞吐遥测胶囊: [ ↑35.2M ↓225k (Σ117M) │ $37.99 ]
+		const inRaw = `↑${shortCount(usage.input)}`;
+		const outRaw = `↓${shortCount(usage.output)}`;
+		const sumRaw = `(Σ${shortCount(usage.total)})`;
+		const costRaw = `$${usage.cost.toFixed(2)}`;
+		const teleBg = pillBg(palette.telemetryBg);
+
+		const telemetryPill =
+			this.theme.style(" ", { bg: teleBg }) +
+			this.theme.style(inRaw, { fg: palette.tokenIn, bg: teleBg }) +
+			this.theme.style(" ", { bg: teleBg }) +
+			this.theme.style(outRaw, { fg: palette.tokenOut, bg: teleBg }) +
+			this.theme.style(" ", { bg: teleBg }) +
+			this.theme.style(sumRaw, { fg: palette.tokenSum, bg: teleBg }) +
+			this.theme.style(" │ ", { fg: palette.separator, bg: teleBg }) +
+			this.theme.style(costRaw, { fg: palette.tokenCost, bg: teleBg, bold: true }) +
+			this.theme.style(" ", { bg: teleBg });
+		const teleVis = visibleWidth(` ${inRaw} ${outRaw} ${sumRaw} │ ${costRaw} `);
+
+		// (F) CTX 进度胶囊: [ CTX ━━━━──── 51% 539k/1M ]
+		const ctxTitle = this.theme.style(" CTX ", { fg: palette.tokenSum, bg: teleBg, bold: true });
+		const ctxBarFilled = this.theme.style("━".repeat(ctxFilled), { fg: ctxColor, bg: teleBg, bold: true });
+		const ctxBarEmpty = this.theme.style("─".repeat(ctxEmpty), { fg: palette.ctxTrack, bg: teleBg });
+		const ctxNum = this.theme.style(` ${ctxPercent}% `, { fg: ctxColor, bg: teleBg, bold: true });
+		const ctxRatio = this.theme.style(`${shortCount(ctxTokens)}/${shortCount(ctxWindow)} `, { fg: palette.tokenSum, bg: teleBg });
+		const ctxPill = `${ctxTitle}${ctxBarFilled}${ctxBarEmpty}${ctxNum}${ctxRatio}`;
+		const ctxVis = visibleWidth(` CTX ${"━".repeat(ctxFilled)}${"─".repeat(ctxEmpty)} ${ctxPercent}% ${shortCount(ctxTokens)}/${shortCount(ctxWindow)} `);
+
+		// 左右组装
+		const leftStr = `${statusPill} ${projectPill} ${branchPill}`;
+		const leftVis = statusVis + 1 + projectVis + 1 + branchVis;
+
+		// 右侧模块按优先级适配宽度
+		const rightItems: { pill: string; vis: number; priority: number }[] = [
+			{ pill: ctxPill, vis: ctxVis, priority: 3 },
+			{ pill: telemetryPill, vis: teleVis, priority: 2 },
+			{ pill: modelGroupPill, vis: modelGroupVis, priority: 1 },
 		];
 
-		const rightChunks: Chunk[] = [
-			{ id: "model", text: model, colors: palette.model, bold: true },
-			{ id: "think", text: thinkText, colors: thinkColors, bold: true },
-			{ id: "tokens", text: `↑${shortCount(usage.input)} ↓${shortCount(usage.output)} Σ${shortCount(usage.total)}`, colors: palette.tokens },
-			{ id: "cost", text: `$${usage.cost.toFixed(3)}`, colors: palette.cost },
-			{ id: "ctx", text: context, colors: palette.ctx },
-		];
-
-		const allChunks: Chunk[] = [
-			{ id: "status", text: statusText, colors: statusColors, bold: true },
-			{ id: "model", text: model, colors: palette.model, bold: true },
-			{ id: "think", text: thinkText, colors: thinkColors, bold: true },
-			{ id: "project", text: `📁 ${projectWithBranch}`, colors: palette.project },
-			{ id: "tokens", text: `↑${shortCount(usage.input)} ↓${shortCount(usage.output)} Σ${shortCount(usage.total)}`, colors: palette.tokens },
-			{ id: "cost", text: `$${usage.cost.toFixed(3)}`, colors: palette.cost },
-			{ id: "ctx", text: context, colors: palette.ctx },
-		];
-
-		if (st.status === "error" && st.errorMessage) {
-			const errChunk: Chunk = { id: "error", text: `Reason: ${singleLine(st.errorMessage)}`, colors: palette.error };
-			rightChunks.unshift(errChunk);
-			allChunks.push(errChunk);
+		const activeRight: string[] = [];
+		let rightVis = 0;
+		// 优先放入高优先级模块
+		for (const item of [...rightItems].sort((a, b) => a.priority - b.priority)) {
+			const spaceNeeded = leftVis + rightVis + item.vis + 2;
+			if (spaceNeeded <= width) {
+				activeRight.push(item.pill);
+				rightVis += item.vis + (activeRight.length > 1 ? 1 : 0);
+			}
 		}
 
-		const style = st.style || "split";
+		// 右侧保持原始排列顺序展示
+		const orderedRight = rightItems.filter(i => activeRight.includes(i.pill)).map(i => i.pill).reverse().join(" ");
+		const totalVis = leftVis + rightVis;
 
-		// --- Style: Split (Preview HTML 方案 A 双侧分栏布局) ---
-		if (style === "split") {
-			const renderChunkPill = (chunk: Chunk) => {
-				const raw = ` ${chunk.text} `;
-				const pillBg = mixColors(canvas, chunk.colors.tint, isDark ? 0.20 : 0.25, "srgb");
-				return {
-					styled: this.theme.style(raw, { fg: chunk.colors.fg, bg: pillBg, bold: chunk.bold ?? false }),
-					vis: visibleWidth(raw),
-				};
-			};
-
-			const lItems = leftChunks.map(renderChunkPill);
-			let leftVis = lItems.reduce((acc, c) => acc + c.vis, 0) + (lItems.length - 1);
-			let leftStr = lItems.map(c => c.styled).join(" ");
-
-			const rItems = rightChunks.map(renderChunkPill);
-
-			// Adaptive fit for right side items
-			const activeRight: { styled: string; vis: number }[] = [];
-			let rightVis = 0;
-			for (let i = 0; i < rItems.length; i++) {
-				const item = rItems[i]!;
-				const gap = activeRight.length === 0 ? 0 : 1;
-				if (leftVis + rightVis + item.vis + gap + 2 > width) {
-					// Drop lower priority right metrics if width is constrained
-					if (i >= 2) break;
-				}
-				activeRight.push(item);
-				rightVis += item.vis + gap;
-			}
-
-			const rightStr = activeRight.map(c => c.styled).join(" ");
-			const totalContentVis = leftVis + rightVis;
-
-			if (totalContentVis >= width) {
-				return [truncateToWidth(`${leftStr} ${rightStr}`, width)];
-			}
-
-			// Clean middle filler with subtle dot/dash borderLine
-			const gapCount = width - totalContentVis;
-			const middleFill = "\x1b[49m" + this.theme.style(" ".repeat(gapCount), { fg: palette.borderLine });
-
-			return [truncateToWidth(`${leftStr}${middleFill}${rightStr}\x1b[49m`, width)];
+		if (totalVis >= width) {
+			return [truncateToWidth(`${leftStr} ${orderedRight}`, width)];
 		}
 
-		// --- Style: Pills (方案 4 Discrete Pills) ---
-		if (style === "pills") {
-			let line = "";
-			let currentWidth = 0;
-			const tintRatio = isDark ? 0.20 : 0.25;
+		// 中间纯净留白填充，两端对齐
+		const middleSpaces = Math.max(1, width - totalVis);
+		const fullLine = `${leftStr}\x1b[49m${" ".repeat(middleSpaces)}${orderedRight}\x1b[49m`;
 
-			for (let i = 0; i < allChunks.length; i++) {
-				const chunk = allChunks[i]!;
-				const rawSeg = ` ${chunk.text} `;
-				const segVis = visibleWidth(rawSeg);
-				const neededSpace = currentWidth === 0 ? segVis : segVis + 1;
-
-				if (currentWidth > 0 && currentWidth + neededSpace > width) {
-					if (i >= 4) break;
-				}
-
-				if (currentWidth > 0) {
-					line += " ";
-					currentWidth += 1;
-				}
-
-				const pillBg = mixColors(canvas, chunk.colors.tint, tintRatio, "srgb");
-				line += this.theme.style(rawSeg, {
-					fg: chunk.colors.fg,
-					bg: pillBg,
-					bold: chunk.bold ?? false,
-				});
-				currentWidth += segVis;
-			}
-
-			if (currentWidth < width) {
-				const fillCount = width - currentWidth;
-				line += "\x1b[49m" + this.theme.style("─".repeat(fillCount), {
-					fg: palette.borderLine,
-				});
-			}
-
-			return [truncateToWidth(line, width)];
-		}
-
-		// --- Style: Border (方案 2 Pure Border Accent) ---
-		if (style === "border") {
-			let line = this.theme.style("▌ ", { fg: statusColors.fg, bold: true });
-			let currentWidth = 2;
-
-			for (let i = 0; i < allChunks.length; i++) {
-				const chunk = allChunks[i]!;
-				const rawSeg = chunk.text;
-				const segVis = visibleWidth(rawSeg);
-				const neededSpace = currentWidth === 2 ? segVis : segVis + 3;
-
-				if (currentWidth > 2 && currentWidth + neededSpace > width) {
-					if (i >= 4) break;
-				}
-
-				if (currentWidth > 2) {
-					line += this.theme.style(" · ", { fg: palette.separator });
-					currentWidth += 3;
-				}
-
-				line += this.theme.style(rawSeg, {
-					fg: chunk.colors.fg,
-					bold: chunk.bold ?? false,
-				});
-				currentWidth += segVis;
-			}
-
-			if (currentWidth < width) {
-				const fillCount = width - currentWidth;
-				line += "\x1b[49m" + this.theme.style("─".repeat(fillCount), { fg: palette.borderLine });
-			}
-
-			return [truncateToWidth(line, width)];
-		}
-
-		// --- Style: Classic (方案 1 Pure Classic) ---
-		let line = this.theme.style("──── ", { fg: palette.borderLine });
-		let currentWidth = 5;
-
-		for (let i = 0; i < allChunks.length; i++) {
-			const chunk = allChunks[i]!;
-			const rawSeg = chunk.text;
-			const segVis = visibleWidth(rawSeg);
-			const neededSpace = currentWidth === 5 ? segVis : segVis + 3;
-
-			if (currentWidth > 5 && currentWidth + neededSpace > width) {
-				if (i >= 4) break;
-			}
-
-			if (currentWidth > 5) {
-				line += this.theme.style(" · ", { fg: palette.separator });
-				currentWidth += 3;
-			}
-
-			line += this.theme.style(rawSeg, {
-				fg: chunk.colors.fg,
-				bold: chunk.bold ?? false,
-			});
-			currentWidth += segVis;
-		}
-
-		if (currentWidth < width) {
-			const fillCount = width - currentWidth;
-			line += "\x1b[49m" + this.theme.style("─".repeat(fillCount), { fg: palette.borderLine });
-		}
-
-		return [truncateToWidth(line, width)];
+		return [truncateToWidth(fullLine, width)];
 	}
 
 	invalidate(): void {}
@@ -397,7 +308,7 @@ export default function (pi: ExtensionAPI) {
 	const state: TopBarState = {
 		status: "idle",
 		visible: true,
-		style: "split", // 默认设为您预览 HTML 里的双侧现代分段流 (Split Layout)
+		style: "split",
 	};
 	let currentContext: ExtensionContext | null = null;
 	let tuiInstance: TUI | null = null;
@@ -629,23 +540,16 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 	pi.registerCommand("topbar", {
-		description: "Toggle or change status bar style (/topbar [on|off|toggle|split|pills|classic|border])",
+		description: "Toggle or change status bar (/topbar [on|off|toggle])",
 		handler: async (args, ctx) => {
 			const action = args.trim().toLowerCase();
-			if (["split", "pills", "classic", "border"].includes(action)) {
-				state.style = action as StatusBarStyle;
-				state.visible = true;
-				ctx.ui.notify(`Status bar style: ${state.style}`, "info");
-				redraw();
-				return;
-			}
 			if (["", "on", "off", "toggle"].includes(action)) {
 				state.visible = action === "on" ? true : action === "off" ? false : !state.visible;
-				ctx.ui.notify(`Status bar: ${state.visible ? "ON" : "OFF"} (${state.style})`, "info");
+				ctx.ui.notify(`Status bar: ${state.visible ? "ON" : "OFF"}`, "info");
 				redraw();
 				return;
 			}
-			ctx.ui.notify("Usage: /topbar [on|off|toggle|split|pills|classic|border]", "warning");
+			ctx.ui.notify("Usage: /topbar [on|off|toggle]", "warning");
 		},
 	});
 }
