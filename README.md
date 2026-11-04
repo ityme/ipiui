@@ -15,9 +15,10 @@ Your prompt
 
 ## Display Styles
 
-Switch styles anytime with `/topbar style [pills|classic|border]`:
+Switch styles anytime with `/topbar style [split|pills|classic|border]`:
 
-- **`pills` (Default · Option 4)**: Modern discrete micro-pills with 20% semi-transparent tinted backgrounds and semantic foreground colors. Contrast ratio ≥ 5.6:1 in dark mode, ≥ 12.0:1 in light mode. Trailing border line cleanly fills the rest of the window.
+- **`split` (Default · Option A)**: Modern dual-split statusline inspired by [agent_statusline_preview.html]. Left side anchors primary identity (animated status icon, project folder, git branch); right side displays telemetry (model, color-coded thinking level, tokens, cost, ctx).
+- **`pills` (Option 4)**: Sequential discrete micro-pills with 20% tinted backgrounds and semantic foreground colors. Trailing border line cleanly fills the rest of the window.
 - **`classic` (Option 1)**: Pure transparent background with clean colored text blocks separated by dots (`──── ✓ · gemini-3.8-flash · ✦ high · ... ────`).
 - **`border` (Option 2)**: Pure transparent background with a dynamic status-colored indicator bar on the left edge (`▌ ✓ · ... ────`).
 
@@ -58,7 +59,8 @@ This extension restores the native editor and hides the footer. Disable competin
 
 - `/topbar` or `/topbar toggle` — toggle status row visibility.
 - `/topbar on` / `/topbar off` — show or hide status row.
-- `/topbar pills` — switch to discrete micro-pills (Default · Option 4).
+- `/topbar split` — switch to dual-split layout (Default · Option A).
+- `/topbar pills` — switch to discrete micro-pills (Option 4).
 - `/topbar classic` — switch to pure transparent colored text (Option 1).
 - `/topbar border` — switch to pure transparent with left accent indicator (Option 2).
 

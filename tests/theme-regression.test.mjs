@@ -79,7 +79,7 @@ test("running icon animates with braille rotation", () => {
 });
 
 test("information order, unknown context, cumulative totals, branch and path", () => {
-	const component = new TopStatusBarComponent({ status: "idle", visible: true,
+	const component = new TopStatusBarComponent({ status: "idle", visible: true, style: "pills",
 		modelId: "relay/gemini3.8flash", thinkingLevel: "high", gitBranch: "dev", cwd: "I:/ispace/ipiui",
 		usage: { input: 1200, output: 300, total: 2500, cost: 0.123 },
 	}, getThemeByName("dark"), context);
@@ -91,6 +91,21 @@ test("information order, unknown context, cumulative totals, branch and path", (
 		assert.ok(next > position, `Wrong field order: ${field}`);
 		position = next;
 	}
+
+	// Also verify split layout order: Left (status, project, branch) | Right (model, think, tokens, cost, ctx)
+	const splitComp = new TopStatusBarComponent({ status: "idle", visible: true, style: "split",
+		modelId: "relay/gemini3.8flash", thinkingLevel: "high", gitBranch: "dev", cwd: "I:/ispace/ipiui",
+		usage: { input: 1200, output: 300, total: 2500, cost: 0.123 },
+	}, getThemeByName("dark"), context);
+	const splitLine = plain(splitComp.render(200)[0]);
+	const splitFields = ["✓", "ipiui", "dev", "gemini3.8flash", "✦ high", "↑1.2k", "↓300", "Σ2.5k", "$0.123", "ctx"];
+	let splitPos = -1;
+	for (const f of splitFields) {
+		const next = splitLine.indexOf(f);
+		assert.ok(next > splitPos, `Wrong split field order: ${f}`);
+		splitPos = next;
+	}
+
 	for (const tokens of [0, null]) {
 		component.updateContext({ ...context,
 			getContextUsage: () => ({ tokens, contextWindow: 128000, percent: tokens === null ? null : 0 }),
