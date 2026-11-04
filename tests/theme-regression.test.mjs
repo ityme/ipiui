@@ -41,8 +41,8 @@ const plain = stripTerminalSequences;
 for (const themeName of ["dark", "light", "system"]) {
 	const theme = getThemeByName(themeName);
 	assert.ok(theme);
-	for (const [status, label] of [
-		["idle", "READY"], ["running", "RUNNING"], ["error", "ERROR"], ["aborted", "STOPPED"],
+	for (const [status, symbol] of [
+		["idle", "✓"], ["running", "s"], ["error", "✗"], ["aborted", "■"],
 	]) {
 		test(`${themeName}: ${status} fits narrow and wide widths with actual Pi theme`, () => {
 			const component = new TopStatusBarComponent({
@@ -53,10 +53,7 @@ for (const themeName of ["dark", "light", "system"]) {
 				const lines = component.render(width);
 				assert.equal(lines.length, 1);
 				assert.equal(visibleWidth(lines[0]), width);
-				if (width >= 100) assert.ok(plain(lines[0]).includes(label));
-			if (width >= 100 && status === "idle") assert.ok(plain(lines[0]).includes("✓ READY"));
-			if (width >= 100 && status === "error") assert.ok(plain(lines[0]).includes("✗ ERROR"));
-			if (width >= 100 && status === "aborted") assert.ok(plain(lines[0]).includes("■ STOPPED"));
+				if (width >= 100) assert.ok(plain(lines[0]).includes(symbol));
 			}
 		});
 	}
@@ -64,13 +61,13 @@ for (const themeName of ["dark", "light", "system"]) {
 
 test("running icon animates while stable status icons remain semantic", () => {
 	const theme = getThemeByName("dark");
-	const component = new TopStatusBarComponent({ status: "running", visible: true, startTime: Date.now() }, theme, context);
-	const first = plain(component.render(200)[0]).match(/──── (.) RUNNING/)?.[1];
+	const component = new TopStatusBarComponent({ status: "running", visible: true, startTime: Date.now() - 5000 }, theme, context);
+	const first = plain(component.render(200)[0]).match(/──── (.) \d+s/)?.[1];
 	let changed = false;
 	for (let i = 0; i < 8; i++) {
 		const originalNow = Date.now;
 		Date.now = () => originalNow() + i * 100;
-		const next = plain(component.render(200)[0]).match(/──── (.) RUNNING/)?.[1];
+		const next = plain(component.render(200)[0]).match(/──── (.) \d+s/)?.[1];
 		if (next && next !== first) changed = true;
 		Date.now = originalNow;
 	}
@@ -83,11 +80,11 @@ test("running icon animates while stable status icons remain semantic", () => {
 
 test("information order, unknown context, cumulative totals, branch and path", () => {
 	const component = new TopStatusBarComponent({ status: "idle", visible: true,
-		modelId: "relay/gemini3.8flash", thinkingLevel: "high", gitBranch: "dev",
+		modelId: "relay/gemini3.8flash", thinkingLevel: "high", gitBranch: "dev", cwd: "I:/ispace/ipiui",
 		usage: { input: 1200, output: 300, total: 2500, cost: 0.123 },
 	}, getThemeByName("dark"), context);
 	const line = plain(component.render(200)[0]);
-	const fields = ["READY", "gemini3.8flash", "high", "↑1.2k", "↓300", "Σ2.5k", "$0.123", "ctx", "dev", context.cwd];
+	const fields = ["✓", "gemini3.8flash", "high", "ipiui (dev)", "↑1.2k", "↓300", "Σ2.5k", "$0.123", "ctx"];
 	let position = -1;
 	for (const field of fields) {
 		const next = line.indexOf(field);
@@ -252,6 +249,8 @@ test("completion remains below editor border and cursor marker survives", async 
 });
 
 test("regular mode: information above editor, empty footer, lifecycle, parallel tools and cleanup", async () => {
+	const isolatedRoot = await (await import("node:fs/promises")).mkdtemp(path.join((await import("node:os")).tmpdir(), "ipiui-reg-test-"));
+	process.env.IPIUI_TEST_GROUP_ROOT = isolatedRoot;
 	const terminal = new TestTerminal();
 	const tui = new TuiMainScreen(terminal);
 	const handlers = new Map(), commands = new Map();
@@ -315,14 +314,14 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		assert.equal(tui.hasOverlayEntries, false);
 		assert.deepEqual(footer.render(200), []);
 		let lines = frame();
-		assert.ok(lines[0].includes("READY"));
+		assert.ok(lines[0].includes("✓"));
 		assert.ok(!lines[2].includes(">"));
 		assert.match(lines.at(-1), /^─+$/);
 		terminal.input("hello"); assert.equal(editor.getText(), "hello");
 		chat.addChild({ render: () => Array.from({ length: 100 }, (_, i) => `Chat row ${i}`), invalidate() {} });
 		lines = frame();
 		assert.equal(lines[99], "Chat row 99");
-		assert.ok(lines[100].includes("READY"));
+		assert.ok(lines[100].includes("✓"));
 		assert.ok(lines[102].startsWith("hello"));
 		for (const columns of [40, 80, 200]) {
 			terminal.columns = columns; terminal.resize();
@@ -336,7 +335,7 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		titles.push("overwritten-by-pi");
 		heartbeatCallbacks.at(-1)();
 		assert.equal(titles.at(-1), "[1○api]", "Heartbeat must reassert the last grouped title");
-		await emit("agent_start"); assert.ok(line().includes("RUNNING"));
+		await emit("agent_start"); assert.ok(line().includes("0s"));
 		await untilTitle(title => title === "[1▶api]");
 		await emit("tool_execution_start", { toolCallId: "a", toolName: "read" });
 		await emit("tool_execution_start", { toolCallId: "b", toolName: "bash" });
@@ -344,19 +343,19 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		assert.ok(line().includes("bash"));
 		entries = [{ type: "message", message: { role: "assistant", usage: usage() } }];
 		await emit("message_end", { message: { role: "assistant", stopReason: "error", errorMessage: "429" } });
-		await emit("agent_settled", { aborted: false }); assert.ok(line().includes("ERROR"));
+		await emit("agent_settled", { aborted: false }); assert.ok(line().includes("✗"));
 		await untilTitle(title => title === "[1✗api]");
 		assert.ok(line().includes("↑100"));
 		await emit("agent_start");
 		await emit("message_end", { message: { role: "assistant", stopReason: "stop" } });
-		await emit("agent_settled", { aborted: false }); assert.ok(line().includes("READY"));
+		await emit("agent_settled", { aborted: false }); assert.ok(line().includes("✓"));
 		await untilTitle(title => title === "[1✓api]");
 		await emit("agent_start"); await emit("agent_settled", { aborted: true });
-		assert.ok(line().includes("STOPPED"));
+		assert.ok(line().includes("■"));
 		branch = "feature"; branchChanged(); assert.ok(line().includes("feature"));
 		await commands.get("topbar").handler("off", ctx); assert.deepEqual(widget.render(200), []);
-		await commands.get("topbar").handler("on", ctx); assert.ok(line().includes("STOPPED"));
-		await emit("session_start"); assert.ok(line().includes("READY"));
+		await commands.get("topbar").handler("on", ctx); assert.ok(line().includes("■"));
+		await emit("session_start"); assert.ok(line().includes("✓"));
 		assert.equal(editor.getText(), "hello");
 		await untilTitle(title => title === "[1○api]");
 		await commands.get("tabgroup").handler("off", ctx);
@@ -373,6 +372,8 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		await emit("session_shutdown"); widget?.dispose?.(); footer?.dispose?.(); tui.stop();
 		globalThis.setInterval = originalSetInterval;
 		globalThis.clearInterval = originalClearInterval;
+		delete process.env.IPIUI_TEST_GROUP_ROOT;
+		await (await import("node:fs/promises")).rm(isolatedRoot, { recursive: true, force: true });
 	}
 	assert.ok(unsubscribed >= 2);
 });

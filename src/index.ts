@@ -132,20 +132,24 @@ export class TopStatusBarComponent implements Component {
 		const isDark = this.theme.appearance !== "light";
 		const baseInk = isDark ? DARK_INK : LIGHT_INK;
 
-		let status = "✓ READY";
+		let status = "✓";
 		if (st.status === "running") {
 			const elapsed = st.startTime ? Math.floor((now - st.startTime) / 1000) : 0;
 			const frame = BRAILLE_SPINNER[Math.floor(now / 100) % BRAILLE_SPINNER.length];
-			status = `${frame} RUNNING ${elapsed}s${st.activeTool ? ` ${singleLine(st.activeTool)}` : ""}`;
+			status = `${frame} ${elapsed}s${st.activeTool ? ` ${singleLine(st.activeTool)}` : ""}`;
 		} else if (st.status === "error") {
-			status = "✗ ERROR";
+			status = "✗";
 		} else if (st.status === "aborted") {
-			status = "■ STOPPED";
+			status = "■";
 		}
 
 		const usage = st.usage ?? { input: 0, output: 0, total: 0, cost: 0 };
 		const model = singleLine(st.modelId?.split("/").pop() || "no-model");
-		const cwd = singleLine(st.cwd ?? this.context.cwd ?? "?");
+		const cwdRaw = st.cwd ?? this.context.cwd ?? "?";
+		const cwdBasename = singleLine(cwdRaw.split(/[\\/]/).filter(Boolean).pop() || cwdRaw);
+		const branch = singleLine(st.gitBranch ?? "");
+		const projectWithBranch = branch ? `${cwdBasename} (${branch})` : cwdBasename;
+
 		let context = "ctx ?";
 		const contextUsage = this.context.getContextUsage();
 		if (contextUsage && contextUsage.tokens !== null && contextUsage.contextWindow > 0) {
@@ -156,31 +160,39 @@ export class TopStatusBarComponent implements Component {
 		const parts = [
 			model,
 			thinkStr,
+			projectWithBranch,
 			`↑${shortCount(usage.input)}`,
 			`↓${shortCount(usage.output)}`,
 			`Σ${shortCount(usage.total)}`,
 			`$${usage.cost.toFixed(3)}`,
 			context,
-			singleLine(st.gitBranch ?? "no-git"),
-			cwd,
 		];
 
 		const prefix = `──── ${status} `;
-		const fit = () => prefix + parts.join(" · ") + " ────";
-		if (visibleWidth(fit()) > width) {
-			parts[0] = truncateToWidth(model, Math.max(8, Math.min(24, Math.floor(width * 0.2))), "…");
-			parts[8] = cwd.split(/[\\/]/).filter(Boolean).pop() || cwd;
+		const buildBody = () => prefix + parts.join(" · ") + " ";
+		
+		if (visibleWidth(buildBody()) + 4 > width) {
+			parts[0] = truncateToWidth(model, Math.max(8, Math.min(20, Math.floor(width * 0.18))), "…");
 		}
-		// The first fields always survive: status, model, thinking. Drop trailing details first.
-		while (parts.length > 2 && visibleWidth(fit()) > width) parts.pop();
-		if (st.status === "error" && st.errorMessage) {
-			const reason = ` · ${singleLine(st.errorMessage)}`;
-			if (visibleWidth(fit() + reason) <= width) parts.push(singleLine(st.errorMessage));
+		// The first fields always survive: status, model, thinking, project(branch). Drop trailing details first.
+		while (parts.length > 3 && visibleWidth(buildBody()) + 4 > width) {
+			parts.pop();
 		}
 
-		const fullRaw = fit();
-		const text = stripTerminalSequences(truncateToWidth(fullRaw, width, "…"));
-		const padded = text + " ".repeat(Math.max(0, width - visibleWidth(text)));
+		if (st.status === "error" && st.errorMessage) {
+			const reason = `· ${singleLine(st.errorMessage)} `;
+			if (visibleWidth(buildBody() + reason) + 4 <= width) {
+				parts.push(singleLine(st.errorMessage));
+			}
+		}
+
+		const bodyText = buildBody();
+		const bodyVis = visibleWidth(bodyText);
+		const remainingFill = Math.max(0, width - bodyVis);
+		const fullRaw = bodyText + "─".repeat(remainingFill);
+
+		const text = stripTerminalSequences(truncateToWidth(fullRaw, width));
+		const padded = text + "─".repeat(Math.max(0, width - visibleWidth(text)));
 		const prefixWidth = visibleWidth(prefix);
 
 		// Calculate think range within fullRaw to apply dedicated semantic color
@@ -228,6 +240,8 @@ export default function (pi: ExtensionAPI) {
 	let titleHeartbeat: ReturnType<typeof setInterval> | undefined;
 	let lastPublishedTitle = "";
 
+	let tabGroupDirectoryRoot: string | undefined = process.env.IPIUI_TEST_GROUP_ROOT;
+
 	const writeTitle = (title: string) => {
 		lastPublishedTitle = title;
 		if (currentContext?.mode === "tui") currentContext.ui.setTitle(title);
@@ -236,6 +250,7 @@ export default function (pi: ExtensionAPI) {
 	const joinTitleGroup = async (name: string) => {
 		await titleGroup?.stop();
 		titleGroup = new TabTitleGroup({
+			root: tabGroupDirectoryRoot,
 			onTitle: writeTitle,
 			onError: () => currentContext?.ui.notify("ipiui: title synchronization failed; use /tabgroup off and rejoin to retry", "warning"),
 		});
@@ -316,7 +331,9 @@ export default function (pi: ExtensionAPI) {
 		}, { placement: "aboveEditor" });
 		ctx.ui.setEditorComponent(undefined);
 		titleStatus = state.status === "running" ? "running" : "idle";
-		// 自动加入默认群组 'all'
+		if (process.env.IPIUI_TEST_GROUP_ROOT) {
+			tabGroupDirectoryRoot = process.env.IPIUI_TEST_GROUP_ROOT;
+		}
 		if (groupName) await joinTitleGroup(groupName);
 		if (state.status === "running") startIconTimer();
 		redraw();

@@ -17,13 +17,14 @@ Your prompt
 
 Information order:
 
-1. Running state: `✓ READY`, animated `⠋/⠙/⠹/⠸... RUNNING` with elapsed seconds and active tools, `✗ ERROR`, or `■ STOPPED`. The braille spinner animates smoothly while active.
+1. Running state symbol: `✓` for idle, animated braille frame + elapsed seconds (e.g. `⠋ 6s (bash)`) while active, `✗` for error, or `■` for stopped.
 2. Short model ID and color-coded thinking level (sky blue for high/max, warm amber for medium, green for low, muted slate for off).
-3. `↑` cumulative input tokens and `↓` cumulative output tokens for the session.
-4. `Σ` cumulative input + output + cache-read + cache-write tokens. Reasoning is already part of output and is not counted twice.
-5. Cumulative dollar cost reported by Pi: provider-billed cost when available, otherwise Pi's model-price estimate. A zero value may indicate that pricing is unavailable, not necessarily a free request.
-6. Context tokens, context window and percentage. Unknown usage after compaction is shown as `ctx ?`.
-7. Git branch (`no-git` outside a repository) and current directory.
+3. Project name and Git branch (e.g. `ipiui (dev)`).
+4. `↑` cumulative input tokens and `↓` cumulative output tokens for the session.
+5. `Σ` cumulative input + output + cache-read + cache-write tokens. Reasoning is already part of output and is not counted twice.
+6. Cumulative dollar cost reported by Pi: provider-billed cost when available, otherwise Pi's model-price estimate. A zero value may indicate that pricing is unavailable, not necessarily a free request.
+7. Context tokens, context window and percentage. Unknown usage after compaction is shown as `ctx ?`.
+8. The right side automatically fills the rest of the line with a horizontal bar (`────`), keeping the flowing subdued rainbow background across the full terminal width.
 
 Totals follow Pi's footer accounting across all session entries, including usage entries, tools, compaction and branch summaries. They are not restricted to the latest response or the post-compaction context.
 
