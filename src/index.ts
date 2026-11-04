@@ -11,7 +11,7 @@ import {
 	visibleWidth,
 } from "@earendil-works/pi-tui";
 
-export type StatusBarStyle = "split" | "pills" | "classic" | "border";
+export type StatusBarStyle = "rainbow_blocks" | "classic" | "border";
 
 export interface TopBarState {
 	status: "idle" | "running" | "error" | "aborted";
@@ -46,7 +46,6 @@ export function collectUsage(entries: ReturnType<ExtensionContext["sessionManage
 		if (!usage) continue;
 		totals.input += usage.input;
 		totals.output += usage.output;
-		// Reasoning tokens are already included in output; never add them twice.
 		totals.total += usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
 		totals.cost += usage.cost.total;
 	}
@@ -58,69 +57,100 @@ const BRAILLE_SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧",
 const DARK_CANVAS = rgbColor(9, 11, 16);
 const LIGHT_CANVAS = rgbColor(248, 250, 252);
 
-interface SemanticColorSet {
-	fg: Color;
-	tint: Color;
+// 经典彩虹色谱
+const RAW_RAINBOW = [
+	rgbColor(255, 110, 130), // soft red/coral
+	rgbColor(255, 175, 80),  // amber/orange
+	rgbColor(245, 220, 80),  // yellow
+	rgbColor(80, 220, 140),  // green/emerald
+	rgbColor(60, 200, 245),  // sky/cyan
+	rgbColor(140, 150, 250), // blue/indigo
+	rgbColor(215, 130, 240), // purple/violet
+];
+
+// 每个字母赋予动态彩虹渐变色
+function rainbowChars(text: string, timeMs = 0): { ch: string; col: Color }[] {
+	const graphemes = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text)].map(s => s.segment);
+	const total = graphemes.length;
+	const shift = (timeMs / 4000) % 1;
+	return graphemes.map((ch, i) => {
+		const pos = (((i / Math.max(1, total - 1)) + shift) % 1) * (RAW_RAINBOW.length - 1);
+		const idx = Math.min(RAW_RAINBOW.length - 2, Math.floor(pos));
+		const col = mixColors(RAW_RAINBOW[idx], RAW_RAINBOW[idx + 1], pos - idx, "srgb");
+		return { ch, col };
+	});
 }
 
-function getSemanticPalette(isDark: boolean) {
+function getRainbowBlockPalette(isDark: boolean) {
 	if (isDark) {
 		return {
 			canvasBg: rgbColor(9, 11, 16),
-			running: { fg: rgbColor(52, 211, 153), tint: rgbColor(16, 185, 129) },
-			ready: { fg: rgbColor(148, 163, 184), tint: rgbColor(45, 55, 75) },
-			error: { fg: rgbColor(248, 113, 113), tint: rgbColor(239, 68, 68) },
-			aborted: { fg: rgbColor(251, 146, 60), tint: rgbColor(249, 115, 22) },
 			
-			project: { fg: rgbColor(241, 245, 249), tint: rgbColor(38, 48, 68) },
-			branch: { fg: rgbColor(56, 189, 248), tint: rgbColor(14, 165, 233) },
+			// 模块 1: 状态胶囊背景
+			bgStatusReady: mixColors(DARK_CANVAS, rgbColor(16, 185, 129), 0.20, "srgb"),
+			bgStatusRun: mixColors(DARK_CANVAS, rgbColor(245, 158, 11), 0.22, "srgb"),
+			bgStatusErr: mixColors(DARK_CANVAS, rgbColor(239, 68, 68), 0.22, "srgb"),
+			bgStatusStp: mixColors(DARK_CANVAS, rgbColor(249, 115, 22), 0.20, "srgb"),
+			fgStatusReady: rgbColor(74, 222, 128),
+			fgStatusRun: rgbColor(251, 191, 36),
+			fgStatusErr: rgbColor(248, 113, 113),
+			fgStatusStp: rgbColor(251, 146, 60),
 
-			model: { fg: rgbColor(233, 213, 255), tint: rgbColor(168, 85, 247) },
-			thinkHigh: { fg: rgbColor(165, 180, 252), tint: rgbColor(99, 102, 241) },
-			thinkMed: { fg: rgbColor(253, 224, 71), tint: rgbColor(234, 179, 8) },
-			thinkLow: { fg: rgbColor(110, 231, 183), tint: rgbColor(16, 185, 129) },
-			thinkOff: { fg: rgbColor(148, 163, 184), tint: rgbColor(71, 85, 105) },
+			// 模块 2: 项目与分支 (同模块同背景色: 靛青微光)
+			bgProjBranch: mixColors(DARK_CANVAS, rgbColor(14, 165, 233), 0.18, "srgb"),
+			fgProject: rgbColor(250, 204, 21), // 黄色
+			fgBranch: rgbColor(56, 189, 248),  // 青色
 
-			tokenIn: rgbColor(96, 165, 250),
-			tokenOut: rgbColor(52, 211, 153),
-			tokenCost: rgbColor(251, 191, 36),
-			telemetryBg: rgbColor(30, 38, 55),
+			// 模块 3: 模型与思考 (深紫罗兰微光底，字母全彩虹渐变)
+			bgModelThink: mixColors(DARK_CANVAS, rgbColor(168, 85, 247), 0.20, "srgb"),
 
+			// 模块 4: 遥测数据 (翡翠薄荷微光底)
+			bgTelemetry: mixColors(DARK_CANVAS, rgbColor(34, 197, 94), 0.18, "srgb"),
+			fgTokenIn: rgbColor(96, 165, 250),
+			fgTokenOut: rgbColor(52, 211, 153),
+			fgCost: rgbColor(251, 191, 36),
+
+			// 模块 5: CTX 进度 (深石板灰微光底)
+			bgCtx: mixColors(DARK_CANVAS, rgbColor(99, 102, 241), 0.18, "srgb"),
 			ctxLow: rgbColor(45, 212, 191),
 			ctxMed: rgbColor(251, 191, 36),
 			ctxHigh: rgbColor(249, 115, 22),
 			ctxTrack: rgbColor(148, 163, 184),
+			ctxText: rgbColor(203, 213, 225),
 
-			borderLine: rgbColor(30, 38, 56),
+			bracketColor: rgbColor(148, 163, 184),
 		};
 	} else {
 		return {
 			canvasBg: rgbColor(248, 250, 252),
-			running: { fg: rgbColor(5, 150, 105), tint: rgbColor(209, 250, 229) },
-			ready: { fg: rgbColor(71, 85, 105), tint: rgbColor(226, 232, 240) },
-			error: { fg: rgbColor(220, 38, 38), tint: rgbColor(254, 226, 226) },
-			aborted: { fg: rgbColor(217, 119, 6), tint: rgbColor(254, 243, 199) },
+			bgStatusReady: mixColors(LIGHT_CANVAS, rgbColor(187, 247, 208), 0.25, "srgb"),
+			bgStatusRun: mixColors(LIGHT_CANVAS, rgbColor(254, 240, 138), 0.25, "srgb"),
+			bgStatusErr: mixColors(LIGHT_CANVAS, rgbColor(254, 202, 202), 0.25, "srgb"),
+			bgStatusStp: mixColors(LIGHT_CANVAS, rgbColor(254, 215, 170), 0.25, "srgb"),
+			fgStatusReady: rgbColor(22, 101, 52),
+			fgStatusRun: rgbColor(146, 64, 14),
+			fgStatusErr: rgbColor(153, 27, 27),
+			fgStatusStp: rgbColor(154, 52, 18),
 
-			project: { fg: rgbColor(15, 23, 42), tint: rgbColor(203, 213, 225) },
-			branch: { fg: rgbColor(2, 132, 199), tint: rgbColor(186, 230, 253) },
+			bgProjBranch: mixColors(LIGHT_CANVAS, rgbColor(224, 242, 254), 0.25, "srgb"),
+			fgProject: rgbColor(161, 98, 7),
+			fgBranch: rgbColor(2, 132, 199),
 
-			model: { fg: rgbColor(107, 33, 168), tint: rgbColor(233, 213, 255) },
-			thinkHigh: { fg: rgbColor(67, 56, 202), tint: rgbColor(224, 231, 255) },
-			thinkMed: { fg: rgbColor(146, 64, 14), tint: rgbColor(254, 240, 138) },
-			thinkLow: { fg: rgbColor(22, 101, 52), tint: rgbColor(187, 247, 208) },
-			thinkOff: { fg: rgbColor(71, 85, 105), tint: rgbColor(226, 232, 240) },
+			bgModelThink: mixColors(LIGHT_CANVAS, rgbColor(243, 232, 255), 0.25, "srgb"),
 
-			tokenIn: rgbColor(37, 99, 235),
-			tokenOut: rgbColor(5, 150, 105),
-			tokenCost: rgbColor(180, 83, 9),
-			telemetryBg: rgbColor(226, 232, 240),
+			bgTelemetry: mixColors(LIGHT_CANVAS, rgbColor(209, 250, 229), 0.25, "srgb"),
+			fgTokenIn: rgbColor(37, 99, 235),
+			fgTokenOut: rgbColor(5, 150, 105),
+			fgCost: rgbColor(180, 83, 9),
 
+			bgCtx: mixColors(LIGHT_CANVAS, rgbColor(224, 231, 255), 0.25, "srgb"),
 			ctxLow: rgbColor(13, 148, 136),
 			ctxMed: rgbColor(180, 83, 9),
 			ctxHigh: rgbColor(194, 65, 12),
-			ctxTrack: rgbColor(203, 213, 225),
+			ctxTrack: rgbColor(148, 163, 184),
+			ctxText: rgbColor(51, 65, 85),
 
-			borderLine: rgbColor(226, 232, 240),
+			bracketColor: rgbColor(100, 116, 139),
 		};
 	}
 }
@@ -139,6 +169,20 @@ function shortContextWindow(value: number): string {
 	return value >= 1_000_000 ? `${Math.round(value / 1_000_000)}M` : shortCount(value);
 }
 
+function formatDuration(sec: number): string {
+	if (!sec || sec <= 0) return "";
+	const s = sec % 60;
+	const m = Math.floor(sec / 60) % 60;
+	const h = Math.floor(sec / 3600);
+	if (h > 0) {
+		return `${h}h${m > 0 || s > 0 ? `${m}m` : ""}${s > 0 ? `${s}s` : ""}`;
+	}
+	if (m > 0) {
+		return `${m}m${s > 0 ? `${s}s` : ""}`;
+	}
+	return `${s}s`;
+}
+
 export class TopStatusBarComponent implements Component {
 	constructor(private state: TopBarState, private theme: Theme, private context: ExtensionContext) {}
 
@@ -151,43 +195,48 @@ export class TopStatusBarComponent implements Component {
 		const st = this.state;
 		const now = Date.now();
 		const isDark = this.theme.appearance !== "light";
-		const palette = getSemanticPalette(isDark);
-		const canvas = isDark ? DARK_CANVAS : LIGHT_CANVAS;
+		const p = getRainbowBlockPalette(isDark);
 
-		// 1. Status 徽章（3 字符缩写，定长保持一致，符号与文本间有空格）
+		// 1. Status 徽章（3 字符缩写，默认占位 100h32m10s，自动升级单位，无耗时不显示）
 		let statusIcon = "⠿";
 		let statusLabel = "RDY";
-		let statusColors: SemanticColorSet = palette.ready;
+		let statusBg = p.bgStatusReady;
+		let statusFg = p.fgStatusReady;
 		let elapsedSec = 0;
 
 		if (st.status === "running") {
 			elapsedSec = st.startTime ? Math.floor((now - st.startTime) / 1000) : 0;
 			const frame = BRAILLE_SPINNER[Math.floor(now / 100) % BRAILLE_SPINNER.length];
 			statusIcon = frame;
-			const shortTool = st.activeTool ? singleLine(st.activeTool).slice(0, 7) : "";
-			statusLabel = shortTool ? `RUN ${shortTool}` : "RUN";
-			statusColors = palette.running;
+			statusLabel = "RUN";
+			statusBg = p.bgStatusRun;
+			statusFg = p.fgStatusRun;
 		} else if (st.status === "error") {
 			elapsedSec = st.durationMs ? Math.floor(st.durationMs / 1000) : 0;
 			statusIcon = "✗";
 			statusLabel = "ERR";
-			statusColors = palette.error;
+			statusBg = p.bgStatusErr;
+			statusFg = p.fgStatusErr;
 		} else if (st.status === "aborted") {
 			elapsedSec = st.durationMs ? Math.floor(st.durationMs / 1000) : 0;
 			statusIcon = "■";
 			statusLabel = "STP";
-			statusColors = palette.aborted;
+			statusBg = p.bgStatusStp;
+			statusFg = p.fgStatusStp;
 		} else {
 			elapsedSec = st.durationMs ? Math.floor(st.durationMs / 1000) : 0;
 		}
 
-		// 符号与文本间留空格；状态切换时胶囊宽度锁定。
-		const statusCore = ` ${statusIcon} ${statusLabel} ${elapsedSec}s ● `;
-		const TARGET_STATUS_VIS_WIDTH = 15;
-		const curStatusVis = visibleWidth(statusCore);
-		const statusPaddedText = statusCore + " ".repeat(Math.max(1, TARGET_STATUS_VIS_WIDTH - curStatusVis + 1));
+		// 无耗时不显示，有耗时自动格式化 (如 54s, 3m7s, 100h32m10s)
+		const durStr = formatDuration(elapsedSec);
+		const statusCoreText = durStr ? `${statusIcon} ${statusLabel} ${durStr}` : `${statusIcon} ${statusLabel}`;
+		// 默认以 "100h32m10s" (10 字符) 占位保证宽度定长稳定
+		const MAX_TIME_WIDTH = 10;
+		const TARGET_INNER_WIDTH = 1 + 1 + 3 + 1 + MAX_TIME_WIDTH; // 16 列
+		const curCoreVis = visibleWidth(statusCoreText);
+		const statusPadded = statusCoreText + " ".repeat(Math.max(0, TARGET_INNER_WIDTH - curCoreVis));
 
-		// 2. 项目与分支（符号与文字间加空格：📁 ipiui， dev）
+		// 2. 项目与分支
 		const usage = st.usage ?? { input: 0, output: 0, total: 0, cost: 0 };
 		const model = singleLine(st.modelId?.split("/").pop() || "no-model");
 		const cwdRaw = st.cwd ?? this.context.cwd ?? "?";
@@ -211,122 +260,69 @@ export class TopStatusBarComponent implements Component {
 		const ctxTotalBlocks = 8;
 		const ctxFilled = Math.max(0, Math.min(ctxTotalBlocks, Math.round((ctxPercent / 100) * ctxTotalBlocks)));
 		const ctxEmpty = ctxTotalBlocks - ctxFilled;
-		const ctxColor = ctxPercent > 80 ? palette.ctxHigh : ctxPercent > 60 ? palette.ctxMed : palette.ctxLow;
+		const ctxBarColor = ctxPercent > 80 ? p.ctxHigh : ctxPercent > 60 ? p.ctxMed : p.ctxLow;
 
-		// 4. 胶囊底色保持适度柔和，思考等级使用独立的语义色底。
-		const pillBg = (tint: Color) => mixColors(canvas, tint, isDark ? 0.24 : 0.22, "srgb");
+		// 4. 五大独立模块构建 (带方括号 [] 区分，同模块同背景色)
 
-		// 左侧模块
-		// (A) 状态胶囊: [ ⠿RDY 6s ]
-		const statusPill = this.theme.style(statusPaddedText, {
-			fg: statusColors.fg,
-			bg: pillBg(statusColors.tint),
-			bold: true,
-		});
-		const statusVis = visibleWidth(statusPaddedText);
+		// 模块 1: [■ STP 187s]
+		const m1BracketOpen = this.theme.style("[", { fg: p.bracketColor, bg: statusBg, bold: true });
+		const m1BracketClose = this.theme.style("]", { fg: p.bracketColor, bg: statusBg, bold: true });
+		const m1Content = this.theme.style(statusPadded, { fg: statusFg, bg: statusBg, bold: true });
+		const m1Pill = `${m1BracketOpen}${m1Content}${m1BracketClose}`;
+		const m1Vis = 1 + visibleWidth(statusPadded) + 1;
 
-		// (B) 项目胶囊: [ 📁 ipiui ]（符号与文本间有空格）
-		const projectPill = this.theme.style(` 📁 ${cwdBasename} `, {
-			fg: palette.project.fg,
-			bg: pillBg(palette.project.tint),
-			bold: true,
-		});
-		const projectVis = visibleWidth(` 📁 ${cwdBasename} `);
+		// 模块 2: [📁 ipiui(黄色) dev(青色)] (同模块同背景色)
+		const m2BracketOpen = this.theme.style("[", { fg: p.bracketColor, bg: p.bgProjBranch, bold: true });
+		const m2BracketClose = this.theme.style("]", { fg: p.bracketColor, bg: p.bgProjBranch, bold: true });
+		const m2Proj = this.theme.style(`📁 ${cwdBasename}`, { fg: p.fgProject, bg: p.bgProjBranch, bold: true });
+		const m2Branch = this.theme.style(`${branch}`, { fg: p.fgBranch, bg: p.bgProjBranch, bold: true });
+		const m2Pill = `${m2BracketOpen}${m2Proj} ${m2Branch}${m2BracketClose}`;
+		const m2Vis = 1 + visibleWidth(`📁 ${cwdBasename}`) + 1 + visibleWidth(`${branch}`) + 1;
 
-		// (C) 分支胶囊: [  dev ]（符号与文本间有空格）
-		const branchPill = this.theme.style(`  ${branch} `, {
-			fg: palette.branch.fg,
-			bg: pillBg(palette.branch.tint),
-			bold: false,
-		});
-		const branchVis = visibleWidth(`  ${branch} `);
-
-		// 右侧模块
-		// (D) 模型独立胶囊: [ 🤖 gemini-3.8-flash ]（符号与文本间有空格）
-		const rawThinkLevel = (st.thinkingLevel ?? "off").toLowerCase();
-		const thinkLevelStr = rawThinkLevel === "med" ? "medium" : rawThinkLevel;
-		const thinkDisplay = thinkLevelStr;
-		const modelThinkCellWidth = width < 110 ? Math.max(14, Math.floor(width * 0.16)) : 0;
-		const modelBudget = modelThinkCellWidth > 0
-			? Math.max(6, modelThinkCellWidth - visibleWidth(` 🤖  ✦ ${thinkDisplay} `))
-			: visibleWidth(model);
-		const modelDisplay = modelBudget < visibleWidth(model) ? truncateToWidth(model, modelBudget, "…") : model;
-		const modelText = ` 🤖 ${modelDisplay} `;
-		const modelPill = this.theme.style(modelText, {
-			fg: palette.model.fg,
-			bg: pillBg(palette.model.tint),
-			bold: true,
-		});
-		const modelVis = visibleWidth(modelText);
-
-		// (E) 思考等级独立胶囊: [ ✦ high ]（前置✦，有空格，显示实际等级，不同等级独立专色）
-		let thinkColors: SemanticColorSet = palette.thinkOff;
-		if (thinkLevelStr === "high" || thinkLevelStr === "max" || thinkLevelStr === "xhigh") {
-			thinkColors = palette.thinkHigh;
-		} else if (thinkLevelStr === "medium" || thinkLevelStr === "med") {
-			thinkColors = palette.thinkMed;
-		} else if (thinkLevelStr === "low") {
-			thinkColors = palette.thinkLow;
+		// 模块 3: [🤖 gemini-3.8-flash · medium(每个字母都是彩虹色)]
+		const rawThink = (st.thinkingLevel ?? "med").toLowerCase();
+		const thinkFull = rawThink === "med" ? "medium" : rawThink;
+		const m3RawText = `🤖 ${model} · ${thinkFull}`;
+		const m3BracketOpen = this.theme.style("[", { fg: p.bracketColor, bg: p.bgModelThink, bold: true });
+		const m3BracketClose = this.theme.style("]", { fg: p.bracketColor, bg: p.bgModelThink, bold: true });
+		let m3RainbowContent = "";
+		for (const { ch, col } of rainbowChars(m3RawText, now)) {
+			m3RainbowContent += this.theme.style(ch, { fg: col, bg: p.bgModelThink, bold: true });
 		}
-		const thinkPill = this.theme.style(` ✦ ${thinkDisplay} `, {
-			fg: thinkColors.fg,
-			bg: pillBg(thinkColors.tint),
-			bold: true,
-		});
-		const thinkVis = visibleWidth(` ✦ ${thinkDisplay} `);
+		const m3Pill = `${m3BracketOpen}${m3RainbowContent}${m3BracketClose}`;
+		const m3Vis = 1 + visibleWidth(m3RawText) + 1;
 
-		// (F) 吞吐遥测胶囊: [ ⬆️ 35.2M  ⬇️ 224.7k  💰 37.99¥ ]（符号与数值间加空格）
-		const inRaw = `⬆️ ${shortCount(usage.input)}`;
-		const outRaw = `⬇️ ${shortCount(usage.output)}`;
-		const costRaw = `💰 ${usage.cost.toFixed(2)}¥`;
-		const teleBg = pillBg(palette.telemetryBg);
+		// 模块 4: [⬆️68.7M ⬇️349.9k 💰 176.08¥] (无多余空格，金额前置💰后置¥)
+		const m4BracketOpen = this.theme.style("[", { fg: p.bracketColor, bg: p.bgTelemetry, bold: true });
+		const m4BracketClose = this.theme.style("]", { fg: p.bracketColor, bg: p.bgTelemetry, bold: true });
+		const m4In = this.theme.style(`⬆️${shortCount(usage.input)}`, { fg: p.fgTokenIn, bg: p.bgTelemetry });
+		const m4Out = this.theme.style(`⬇️${shortCount(usage.output)}`, { fg: p.fgTokenOut, bg: p.bgTelemetry });
+		const m4Cost = this.theme.style(`💰 ${usage.cost.toFixed(2)}¥`, { fg: p.fgCost, bg: p.bgTelemetry, bold: true });
+		const m4Pill = `${m4BracketOpen}${m4In} ${m4Out} ${m4Cost}${m4BracketClose}`;
+		const m4Vis = 1 + visibleWidth(`⬆️${shortCount(usage.input)}`) + 1 + visibleWidth(`⬇️${shortCount(usage.output)}`) + 1 + visibleWidth(`💰 ${usage.cost.toFixed(2)}¥`) + 1;
 
-		const telemetryPill =
-			this.theme.style(" ", { bg: teleBg }) +
-			this.theme.style(inRaw, { fg: palette.tokenIn, bg: teleBg }) +
-			this.theme.style("  ", { bg: teleBg }) +
-			this.theme.style(outRaw, { fg: palette.tokenOut, bg: teleBg }) +
-			this.theme.style("  ", { bg: teleBg }) +
-			this.theme.style(costRaw, { fg: palette.tokenCost, bg: teleBg, bold: true }) +
-			this.theme.style(" ", { bg: teleBg });
-		const teleVis = visibleWidth(` ${inRaw}  ${outRaw}  ${costRaw} `);
+		// 模块 5: [CTX ━━━━━━── 75% 786.3k/1M]
+		const m5BracketOpen = this.theme.style("[", { fg: p.bracketColor, bg: p.bgCtx, bold: true });
+		const m5BracketClose = this.theme.style("]", { fg: p.bracketColor, bg: p.bgCtx, bold: true });
+		const m5Title = this.theme.style("CTX ", { fg: p.ctxText, bg: p.bgCtx, bold: true });
+		const m5BarFilled = this.theme.style("━".repeat(ctxFilled), { fg: ctxBarColor, bg: p.bgCtx, bold: true });
+		const m5BarEmpty = this.theme.style("─".repeat(ctxEmpty), { fg: p.ctxTrack, bg: p.bgCtx });
+		const m5Num = this.theme.style(` ${ctxPercent}% `, { fg: ctxBarColor, bg: p.bgCtx, bold: true });
+		const m5Ratio = this.theme.style(`${shortCount(ctxTokens)}/${shortContextWindow(ctxWindow)}`, { fg: p.ctxText, bg: p.bgCtx });
+		const m5Pill = `${m5BracketOpen}${m5Title}${m5BarFilled}${m5BarEmpty}${m5Num}${m5Ratio}${m5BracketClose}`;
+		const m5Vis = 1 + visibleWidth(`CTX ${"━".repeat(ctxFilled)}${"─".repeat(ctxEmpty)} ${ctxPercent}% ${shortCount(ctxTokens)}/${shortContextWindow(ctxWindow)}`) + 1;
 
-		// (G) CTX 进度胶囊: [ CTX ━━━━──── 51% 539k/1M ]
-		const ctxTitle = this.theme.style(" CTX ", { fg: palette.ready.fg, bg: teleBg, bold: true });
-		const ctxBarFilled = this.theme.style("━".repeat(ctxFilled), { fg: ctxColor, bg: teleBg, bold: true });
-		const ctxBarEmpty = this.theme.style("─".repeat(ctxEmpty), { fg: palette.ctxTrack, bg: teleBg });
-		const ctxNum = this.theme.style(` ${ctxPercent}% `, { fg: ctxColor, bg: teleBg, bold: true });
-		const ctxRatio = this.theme.style(`${shortCount(ctxTokens)}/${shortContextWindow(ctxWindow)} `, { fg: palette.ready.fg, bg: teleBg });
-		const ctxPill = `${ctxTitle}${ctxBarFilled}${ctxBarEmpty}${ctxNum}${ctxRatio}`;
-		const ctxVis = visibleWidth(` CTX ${"━".repeat(ctxFilled)}${"─".repeat(ctxEmpty)} ${ctxPercent}% ${shortCount(ctxTokens)}/${shortContextWindow(ctxWindow)} `);
+		// 左右组装：
+		// 左侧: 模块 1 (状态)
+		const leftStr = m1Pill;
+		const leftVis = m1Vis;
 
-		// 左右组装
-		let leftStr = `${statusPill} ${projectPill} ${branchPill}`;
-		let leftVis = statusVis + 1 + projectVis + 1 + branchVis;
-		const maxLeftWidth = Math.min(width, leftVis);
-		if (width >= 100 && leftVis + 10 > width) {
-			const shortProject = truncateToWidth(` 📁 ${cwdBasename} `, Math.max(8, Math.floor(width * 0.18)), "…");
-			const shortProjectPill = this.theme.style(shortProject, {
-				fg: palette.project.fg, bg: pillBg(palette.project.tint), bold: true,
-			});
-			const shortBranch = truncateToWidth(`  ${branch} `, Math.max(8, Math.floor(width * 0.14)), "…");
-			const shortBranchPill = this.theme.style(shortBranch, {
-				fg: palette.branch.fg, bg: pillBg(palette.branch.tint),
-			});
-			const compactLeft = `${statusPill} ${shortProjectPill} ${shortBranchPill}`;
-			const compactLeftWidth = statusVis + 1 + visibleWidth(shortProject) + 1 + visibleWidth(shortBranch);
-			if (compactLeftWidth < leftVis) {
-				leftStr = compactLeft;
-				leftVis = compactLeftWidth;
-			}
-		}
-
-		// 右侧模块：按截图视觉顺序排列（模型 -> 思考 -> 遥测 -> CTX），空间受限时由低到高逐级裁切
+		// 右侧: 模块 2 (项目分支) + 模块 3 (模型彩虹思考) + 模块 4 (遥测) + 模块 5 (CTX)
 		const rightItems: { id: string; pill: string; vis: number; priority: number }[] = [
-			{ id: "model", pill: modelPill, vis: modelVis, priority: 4 },
-			{ id: "think", pill: thinkPill, vis: thinkVis, priority: 3 },
-			{ id: "telemetry", pill: telemetryPill, vis: teleVis, priority: 2 },
-			{ id: "ctx", pill: ctxPill, vis: ctxVis, priority: 1 },
+			{ id: "proj_branch", pill: m2Pill, vis: m2Vis, priority: 4 },
+			{ id: "model_think", pill: m3Pill, vis: m3Vis, priority: 3 },
+			{ id: "telemetry", pill: m4Pill, vis: m4Vis, priority: 2 },
+			{ id: "ctx", pill: m5Pill, vis: m5Vis, priority: 1 },
 		];
 
 		const activeSet = new Set<string>();
@@ -339,15 +335,16 @@ export class TopStatusBarComponent implements Component {
 			}
 		}
 
+		// 右侧保持严格视觉顺序：模块 2 -> 模块 3 -> 模块 4 -> 模块 5
 		const orderedRight = rightItems.filter(item => activeSet.has(item.id)).map(item => item.pill).join(" ");
-		const totalVis = leftVis + rightVis;
+		const totalVis = leftVis + (activeSet.size > 0 ? rightVis : 0);
 
 		if (totalVis >= width) {
 			return [truncateToWidth(`${leftStr} ${orderedRight}`, width)];
 		}
 
-		// 中间留白自适应
-		const middleSpaces = Math.max(2, width - totalVis);
+		// 中间自适应空格留白
+		const middleSpaces = Math.max(1, width - totalVis);
 		const fullLine = `${leftStr}\x1b[49m${" ".repeat(middleSpaces)}${orderedRight}\x1b[49m`;
 
 		return [truncateToWidth(fullLine, width)];
@@ -360,7 +357,7 @@ export default function (pi: ExtensionAPI) {
 	const state: TopBarState = {
 		status: "idle",
 		visible: true,
-		style: "split",
+		style: "rainbow_blocks",
 	};
 	let currentContext: ExtensionContext | null = null;
 	let tuiInstance: TUI | null = null;
