@@ -5,7 +5,7 @@ A refined information row **above Pi's native prompt editor**, featuring **discr
 ```text
 Chat messages…
 
- ✓   gemini-3.8-flash   ✦ high   📁 ipiui (dev)   ↑15.0M ↓167k Σ77.2M   $21.12   ctx 15.6k (2%) ─────────────────
+ ⠿ RDY 0s ●   📁 ipiui    dev   🤖 gemini-3.8-flash   ✦ high   ⬆️ 15.0M  ⬇️ 167k  💰 21.12¥   CTX ━━━━──── 2% 15.6k/1M
 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Your prompt
 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -24,14 +24,13 @@ Switch styles anytime with `/topbar style [split|pills|classic|border]`:
 
 Information order:
 
-1. Running state symbol: `✓` for idle, animated braille frame + elapsed seconds (e.g. `⠋ 6s (bash)`) while active, `✗` for error, or `■` for stopped.
-2. Short model ID.
-3. Color-coded thinking level: `✦ high`/`✦ max` (sky blue), `✦ medium` (amber), `✦ low` (emerald), `✦ off` (slate). No brain emoji.
-4. Project name and Git branch: `📁 ipiui (dev)`.
-5. `↑` cumulative input tokens, `↓` cumulative output tokens, and `Σ` total tokens.
-6. Cumulative dollar cost reported by Pi.
-7. Context tokens, window and percentage.
-8. Trailing horizontal line (`───`) auto-fills to the full window width.
+1. 状态徽章固定宽度（**⠿ RDY 0s ●**）并显示符号与文字之间的空格：空闲为 `⠿ RDY 0s ●`、运行中为 `⠋ RUN 6s ●`、错误为 `✗ ERR 4s ●`、停止为 `■ STP 2s ●`。状态码统一三个字符，耗时一律使用 `s`，切换状态时胶囊宽度保持不变。
+2. 项目名和 Git 分支：`📁 ipiui`、` dev`。
+3. 模型胶囊：`🤖 gemini-3.8-flash`；思考等级为独立胶囊：`✦ high`、`✦ medium`、`✦ low` 等，保留 Pi 提供的实际等级名称，`med` 显示为 `medium`。
+4. Token 显示为 `⬆️ 15.0M ⬇️ 167k`。不再显示难以理解的 `Σ` 总量。
+5. 费用使用 `💰 21.12¥` 格式；Pi 的累计费用本身仍以美元估算数值显示，只是按要求使用 `¥` 外观标记，并不进行货币汇率转换。
+6. CTX 胶囊包含字符进度条、百分比和已用/上限。
+7. 状态与数据块使用相邻空格分隔，不加入括号、竖线等额外分隔符。
 
 Totals follow Pi's footer accounting across all session entries, including usage entries, tools, compaction and branch summaries. They are not restricted to the latest response or the post-compaction context.
 

@@ -42,7 +42,7 @@ for (const themeName of ["dark", "light", "system"]) {
 	const theme = getThemeByName(themeName);
 	assert.ok(theme);
 	for (const [status, symbol] of [
-		["idle", "READY"], ["running", "RUNNING"], ["error", "ERROR"], ["aborted", "STOPPED"],
+		["idle", "RDY"], ["running", "RUN"], ["error", "ERR"], ["aborted", "STP"],
 	]) {
 		test(`${themeName}: ${status} fits narrow and wide widths with actual Pi theme`, () => {
 			const component = new TopStatusBarComponent({
@@ -62,17 +62,17 @@ for (const themeName of ["dark", "light", "system"]) {
 test("running icon animates with braille rotation", () => {
 	const theme = getThemeByName("dark");
 	const component = new TopStatusBarComponent({ status: "running", visible: true, startTime: Date.now() - 5000 }, theme, context);
-	const first = plain(component.render(200)[0]).match(/([⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]) RUNNING/)?.[1];
+	const first = plain(component.render(200)[0]).match(/([⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]) RUN/)?.[1];
 	let changed = false;
 	for (let i = 0; i < 8; i++) {
 		const originalNow = Date.now;
 		Date.now = () => originalNow() + i * 100;
-		const next = plain(component.render(200)[0]).match(/([⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]) RUNNING/)?.[1];
+		const next = plain(component.render(200)[0]).match(/([⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]) RUN/)?.[1];
 		if (next && next !== first) changed = true;
 		Date.now = originalNow;
 	}
 	assert.equal(changed, true);
-	for (const [status, icon] of [["idle", "✓"], ["error", "✗"], ["aborted", "■"]]) {
+	for (const [status, icon] of [["idle", "⠿"], ["error", "✗"], ["aborted", "■"]]) {
 		const stable = new TopStatusBarComponent({ status, visible: true }, theme, context);
 		assert.ok(plain(stable.render(200)[0]).includes(icon));
 	}
@@ -84,7 +84,7 @@ test("information order, unknown context, cumulative totals, branch and path", (
 		usage: { input: 1200, output: 300, total: 2500, cost: 0.123 },
 	}, getThemeByName("dark"), context);
 	const splitLine = plain(splitComp.render(200)[0]);
-	const splitFields = ["READY", "ipiui", "dev", "🤖", "gemini3.8flash", "high", "⬆️ 1.2k", "⬇️ 300", "💰 0.12¥", "CTX"];
+	const splitFields = ["RDY", "ipiui", "dev", "🤖 gemini3.8flash", "✦ high", "⬆️ 1.2k", "⬇️ 300", "💰 0.12¥", "CTX"];
 	let splitPos = -1;
 	for (const f of splitFields) {
 		const next = splitLine.indexOf(f);
@@ -244,6 +244,28 @@ test("completion remains below editor border and cursor marker survives", async 
 	} finally { tui.stop(); }
 });
 
+test("preview-width split layout keeps model, thinking, telemetry and CTX pills separate", () => {
+	const component = new TopStatusBarComponent({
+		status: "running", startTime: Date.now() - 6000, visible: true, style: "split",
+		modelId: "gemini-3.8-flash", thinkingLevel: "medium", gitBranch: "dev", cwd: "I:/ipiui",
+		usage: { input: 35200000, output: 225000, total: 117000000, cost: 37.99 },
+	}, getThemeByName("dark"), {
+		...context,
+		getContextUsage: () => ({ tokens: 539000, contextWindow: 1048576, percent: 51 }),
+	});
+	const line = plain(component.render(140)[0]);
+	assert.equal(visibleWidth(line), 140);
+	const splitFields = ["RUN", "ipiui", "dev", "🤖 gemini-3.8-flash", "✦ medium", "⬆️ 35.2M", "⬇️ 225.0k", "💰 37.99¥", "CTX"];
+	let position = -1;
+	for (const field of splitFields) {
+		const next = line.indexOf(field);
+		assert.ok(next > position, `Wrong split order: ${field}`);
+		position = next;
+	}
+	assert.ok(line.includes("RUN 6s ●"));
+	assert.ok(!line.includes("...") && !line.includes("(Σ") && !line.includes("|"));
+});
+
 test("regular mode: information above editor, empty footer, lifecycle, parallel tools and cleanup", async () => {
 	const isolatedRoot = await (await import("node:fs/promises")).mkdtemp(path.join((await import("node:os")).tmpdir(), "ipiui-reg-test-"));
 	process.env.IPIUI_TEST_GROUP_ROOT = isolatedRoot;
@@ -310,14 +332,14 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		assert.equal(tui.hasOverlayEntries, false);
 		assert.deepEqual(footer.render(200), []);
 		let lines = frame();
-		assert.ok(lines[0].includes("✓"));
+		assert.ok(lines[0].includes("⠿ RDY"));
 		assert.ok(!lines[2].includes(">"));
 		assert.match(lines.at(-1), /^─+$/);
 		terminal.input("hello"); assert.equal(editor.getText(), "hello");
 		chat.addChild({ render: () => Array.from({ length: 100 }, (_, i) => `Chat row ${i}`), invalidate() {} });
 		lines = frame();
 		assert.equal(lines[99], "Chat row 99");
-		assert.ok(lines[100].includes("✓"));
+		assert.ok(lines[100].includes("⠿ RDY"));
 		assert.ok(lines[102].startsWith("hello"));
 		for (const columns of [40, 80, 200]) {
 			terminal.columns = columns; terminal.resize();
@@ -331,27 +353,27 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		titles.push("overwritten-by-pi");
 		heartbeatCallbacks.at(-1)();
 		assert.equal(titles.at(-1), "[1○api]", "Heartbeat must reassert the last grouped title");
-		await emit("agent_start"); assert.ok(line().includes("RUNNING"));
+		await emit("agent_start"); assert.ok(line().includes("RUN"));
 		await untilTitle(title => title === "[1▶api]");
 		await emit("tool_execution_start", { toolCallId: "a", toolName: "read" });
 		await emit("tool_execution_start", { toolCallId: "b", toolName: "bash" });
 		await emit("tool_execution_end", { toolCallId: "a" });
-		assert.ok(line().includes("bash"));
+		assert.ok(line().includes("RUN"));
 		entries = [{ type: "message", message: { role: "assistant", usage: usage() } }];
 		await emit("message_end", { message: { role: "assistant", stopReason: "error", errorMessage: "429" } });
-		await emit("agent_settled", { aborted: false }); assert.ok(line().includes("✗"));
+		await emit("agent_settled", { aborted: false }); assert.ok(line().includes("ERR"));
 		await untilTitle(title => title === "[1✗api]");
 		assert.ok(line().includes("⬆️ 100"));
 		await emit("agent_start");
 		await emit("message_end", { message: { role: "assistant", stopReason: "stop" } });
-		await emit("agent_settled", { aborted: false }); assert.ok(line().includes("✓"));
+		await emit("agent_settled", { aborted: false }); assert.ok(line().includes("RDY"));
 		await untilTitle(title => title === "[1✓api]");
 		await emit("agent_start"); await emit("agent_settled", { aborted: true });
-		assert.ok(line().includes("■"));
+		assert.ok(line().includes("STP"));
 		branch = "feature"; branchChanged(); assert.ok(line().includes("feature"));
 		await commands.get("topbar").handler("off", ctx); assert.deepEqual(widget.render(200), []);
-		await commands.get("topbar").handler("on", ctx); assert.ok(line().includes("■"));
-		await emit("session_start"); assert.ok(line().includes("✓"));
+		await commands.get("topbar").handler("on", ctx); assert.ok(line().includes("STP"));
+		await emit("session_start"); assert.ok(line().includes("⠿ RDY"));
 		assert.equal(editor.getText(), "hello");
 		await untilTitle(title => title === "[1○api]");
 		await commands.get("tabgroup").handler("off", ctx);

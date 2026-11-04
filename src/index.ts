@@ -46,6 +46,7 @@ export function collectUsage(entries: ReturnType<ExtensionContext["sessionManage
 		if (!usage) continue;
 		totals.input += usage.input;
 		totals.output += usage.output;
+		// Reasoning tokens are already included in output; never add them twice.
 		totals.total += usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
 		totals.cost += usage.cost.total;
 	}
@@ -75,7 +76,10 @@ function getSemanticPalette(isDark: boolean) {
 			branch: { fg: rgbColor(56, 189, 248), tint: rgbColor(14, 165, 233) },
 
 			model: { fg: rgbColor(233, 213, 255), tint: rgbColor(168, 85, 247) },
-			thinkTag: { fg: rgbColor(129, 140, 248), bg: rgbColor(35, 42, 70) },
+			thinkHigh: { fg: rgbColor(165, 180, 252), tint: rgbColor(99, 102, 241) },
+			thinkMed: { fg: rgbColor(253, 224, 71), tint: rgbColor(234, 179, 8) },
+			thinkLow: { fg: rgbColor(110, 231, 183), tint: rgbColor(16, 185, 129) },
+			thinkOff: { fg: rgbColor(148, 163, 184), tint: rgbColor(71, 85, 105) },
 
 			tokenIn: rgbColor(96, 165, 250),
 			tokenOut: rgbColor(52, 211, 153),
@@ -101,7 +105,10 @@ function getSemanticPalette(isDark: boolean) {
 			branch: { fg: rgbColor(2, 132, 199), tint: rgbColor(186, 230, 253) },
 
 			model: { fg: rgbColor(107, 33, 168), tint: rgbColor(233, 213, 255) },
-			thinkTag: { fg: rgbColor(67, 56, 202), bg: rgbColor(224, 231, 255) },
+			thinkHigh: { fg: rgbColor(67, 56, 202), tint: rgbColor(224, 231, 255) },
+			thinkMed: { fg: rgbColor(146, 64, 14), tint: rgbColor(254, 240, 138) },
+			thinkLow: { fg: rgbColor(22, 101, 52), tint: rgbColor(187, 247, 208) },
+			thinkOff: { fg: rgbColor(71, 85, 105), tint: rgbColor(226, 232, 240) },
 
 			tokenIn: rgbColor(37, 99, 235),
 			tokenOut: rgbColor(5, 150, 105),
@@ -128,6 +135,10 @@ function shortCount(value: number): string {
 	return String(value);
 }
 
+function shortContextWindow(value: number): string {
+	return value >= 1_000_000 ? `${Math.round(value / 1_000_000)}M` : shortCount(value);
+}
+
 export class TopStatusBarComponent implements Component {
 	constructor(private state: TopBarState, private theme: Theme, private context: ExtensionContext) {}
 
@@ -143,9 +154,9 @@ export class TopStatusBarComponent implements Component {
 		const palette = getSemanticPalette(isDark);
 		const canvas = isDark ? DARK_CANVAS : LIGHT_CANVAS;
 
-		// 1. Status 徽章（定长 + 带秒数单位 s）
-		let statusIcon = "✓";
-		let statusLabel = "READY";
+		// 1. Status 徽章（3 字符缩写，定长保持一致，符号与文本间有空格）
+		let statusIcon = "⠿";
+		let statusLabel = "RDY";
 		let statusColors: SemanticColorSet = palette.ready;
 		let elapsedSec = 0;
 
@@ -153,29 +164,30 @@ export class TopStatusBarComponent implements Component {
 			elapsedSec = st.startTime ? Math.floor((now - st.startTime) / 1000) : 0;
 			const frame = BRAILLE_SPINNER[Math.floor(now / 100) % BRAILLE_SPINNER.length];
 			statusIcon = frame;
-			statusLabel = st.activeTool ? `RUNNING (${singleLine(st.activeTool)})` : "RUNNING";
+			const shortTool = st.activeTool ? singleLine(st.activeTool).slice(0, 7) : "";
+			statusLabel = shortTool ? `RUN ${shortTool}` : "RUN";
 			statusColors = palette.running;
 		} else if (st.status === "error") {
 			elapsedSec = st.durationMs ? Math.floor(st.durationMs / 1000) : 0;
 			statusIcon = "✗";
-			statusLabel = "ERROR";
+			statusLabel = "ERR";
 			statusColors = palette.error;
 		} else if (st.status === "aborted") {
 			elapsedSec = st.durationMs ? Math.floor(st.durationMs / 1000) : 0;
 			statusIcon = "■";
-			statusLabel = "STOPPED";
+			statusLabel = "STP";
 			statusColors = palette.aborted;
 		} else {
 			elapsedSec = st.durationMs ? Math.floor(st.durationMs / 1000) : 0;
 		}
 
-		// 定长状态内容: 统一补空格至宽度保持一致
+		// 符号与文本间留空格；状态切换时胶囊宽度锁定。
 		const statusCore = ` ${statusIcon} ${statusLabel} ${elapsedSec}s ● `;
-		const TARGET_STATUS_VIS_WIDTH = Math.max(18, visibleWidth(statusCore));
+		const TARGET_STATUS_VIS_WIDTH = 15;
 		const curStatusVis = visibleWidth(statusCore);
-		const statusPaddedText = statusCore + " ".repeat(Math.max(0, TARGET_STATUS_VIS_WIDTH - curStatusVis));
+		const statusPaddedText = statusCore + " ".repeat(Math.max(1, TARGET_STATUS_VIS_WIDTH - curStatusVis + 1));
 
-		// 2. 项目与分支
+		// 2. 项目与分支（符号与文字间加空格：📁 ipiui， dev）
 		const usage = st.usage ?? { input: 0, output: 0, total: 0, cost: 0 };
 		const model = singleLine(st.modelId?.split("/").pop() || "no-model");
 		const cwdRaw = st.cwd ?? this.context.cwd ?? "?";
@@ -201,11 +213,11 @@ export class TopStatusBarComponent implements Component {
 		const ctxEmpty = ctxTotalBlocks - ctxFilled;
 		const ctxColor = ctxPercent > 80 ? palette.ctxHigh : ctxPercent > 60 ? palette.ctxMed : palette.ctxLow;
 
-		// 4. 构建胶囊（加深底色 32%~36% 明显可见）
-		const pillBg = (tint: Color) => mixColors(canvas, tint, isDark ? 0.34 : 0.30, "srgb");
+		// 4. 胶囊底色保持适度柔和，思考等级使用独立的语义色底。
+		const pillBg = (tint: Color) => mixColors(canvas, tint, isDark ? 0.24 : 0.22, "srgb");
 
 		// 左侧模块
-		// (A) 状态胶囊
+		// (A) 状态胶囊: [ ⠿RDY 6s ]
 		const statusPill = this.theme.style(statusPaddedText, {
 			fg: statusColors.fg,
 			bg: pillBg(statusColors.tint),
@@ -213,7 +225,7 @@ export class TopStatusBarComponent implements Component {
 		});
 		const statusVis = visibleWidth(statusPaddedText);
 
-		// (B) 项目胶囊: [ 📁 ipiui ]
+		// (B) 项目胶囊: [ 📁 ipiui ]（符号与文本间有空格）
 		const projectPill = this.theme.style(` 📁 ${cwdBasename} `, {
 			fg: palette.project.fg,
 			bg: pillBg(palette.project.tint),
@@ -221,7 +233,7 @@ export class TopStatusBarComponent implements Component {
 		});
 		const projectVis = visibleWidth(` 📁 ${cwdBasename} `);
 
-		// (C) 分支胶囊: [  dev ]
+		// (C) 分支胶囊: [  dev ]（符号与文本间有空格）
 		const branchPill = this.theme.style(`  ${branch} `, {
 			fg: palette.branch.fg,
 			bg: pillBg(palette.branch.tint),
@@ -230,23 +242,40 @@ export class TopStatusBarComponent implements Component {
 		const branchVis = visibleWidth(`  ${branch} `);
 
 		// 右侧模块
-		// (D) 模型 + 思考复合胶囊: [ 🤖 gemini-3.8-flash med ]
-		const thinkLevelStr = (st.thinkingLevel ?? "med").toLowerCase();
-		const thinkShort = thinkLevelStr === "medium" ? "med" : thinkLevelStr;
-		const modelPart = this.theme.style(` 🤖 ${model} `, {
+		// (D) 模型独立胶囊: [ 🤖 gemini-3.8-flash ]（符号与文本间有空格）
+		const rawThinkLevel = (st.thinkingLevel ?? "off").toLowerCase();
+		const thinkLevelStr = rawThinkLevel === "med" ? "medium" : rawThinkLevel;
+		const thinkDisplay = thinkLevelStr;
+		const modelThinkCellWidth = width < 110 ? Math.max(14, Math.floor(width * 0.16)) : 0;
+		const modelBudget = modelThinkCellWidth > 0
+			? Math.max(6, modelThinkCellWidth - visibleWidth(` 🤖  ✦ ${thinkDisplay} `))
+			: visibleWidth(model);
+		const modelDisplay = modelBudget < visibleWidth(model) ? truncateToWidth(model, modelBudget, "…") : model;
+		const modelText = ` 🤖 ${modelDisplay} `;
+		const modelPill = this.theme.style(modelText, {
 			fg: palette.model.fg,
 			bg: pillBg(palette.model.tint),
 			bold: true,
 		});
-		const thinkPart = this.theme.style(` ${thinkShort} `, {
-			fg: palette.thinkTag.fg,
-			bg: palette.thinkTag.bg,
+		const modelVis = visibleWidth(modelText);
+
+		// (E) 思考等级独立胶囊: [ ✦ high ]（前置✦，有空格，显示实际等级，不同等级独立专色）
+		let thinkColors: SemanticColorSet = palette.thinkOff;
+		if (thinkLevelStr === "high" || thinkLevelStr === "max" || thinkLevelStr === "xhigh") {
+			thinkColors = palette.thinkHigh;
+		} else if (thinkLevelStr === "medium" || thinkLevelStr === "med") {
+			thinkColors = palette.thinkMed;
+		} else if (thinkLevelStr === "low") {
+			thinkColors = palette.thinkLow;
+		}
+		const thinkPill = this.theme.style(` ✦ ${thinkDisplay} `, {
+			fg: thinkColors.fg,
+			bg: pillBg(thinkColors.tint),
 			bold: true,
 		});
-		const modelGroupPill = `${modelPart}${thinkPart} `;
-		const modelGroupVis = visibleWidth(` 🤖 ${model}  ${thinkShort}  `);
+		const thinkVis = visibleWidth(` ✦ ${thinkDisplay} `);
 
-		// (E) 吞吐遥测胶囊: [ ⬆️ 35.2M ⬇️ 225k 💰 37.99¥ ] (去除了Σ，纯空格分隔，金额后置¥，前置💰)
+		// (F) 吞吐遥测胶囊: [ ⬆️ 35.2M  ⬇️ 224.7k  💰 37.99¥ ]（符号与数值间加空格）
 		const inRaw = `⬆️ ${shortCount(usage.input)}`;
 		const outRaw = `⬇️ ${shortCount(usage.output)}`;
 		const costRaw = `💰 ${usage.cost.toFixed(2)}¥`;
@@ -262,37 +291,55 @@ export class TopStatusBarComponent implements Component {
 			this.theme.style(" ", { bg: teleBg });
 		const teleVis = visibleWidth(` ${inRaw}  ${outRaw}  ${costRaw} `);
 
-		// (F) CTX 进度胶囊: [ CTX ━━━━──── 51% 539k/1M ]
+		// (G) CTX 进度胶囊: [ CTX ━━━━──── 51% 539k/1M ]
 		const ctxTitle = this.theme.style(" CTX ", { fg: palette.ready.fg, bg: teleBg, bold: true });
 		const ctxBarFilled = this.theme.style("━".repeat(ctxFilled), { fg: ctxColor, bg: teleBg, bold: true });
 		const ctxBarEmpty = this.theme.style("─".repeat(ctxEmpty), { fg: palette.ctxTrack, bg: teleBg });
 		const ctxNum = this.theme.style(` ${ctxPercent}% `, { fg: ctxColor, bg: teleBg, bold: true });
-		const ctxRatio = this.theme.style(`${shortCount(ctxTokens)}/${shortCount(ctxWindow)} `, { fg: palette.ready.fg, bg: teleBg });
+		const ctxRatio = this.theme.style(`${shortCount(ctxTokens)}/${shortContextWindow(ctxWindow)} `, { fg: palette.ready.fg, bg: teleBg });
 		const ctxPill = `${ctxTitle}${ctxBarFilled}${ctxBarEmpty}${ctxNum}${ctxRatio}`;
-		const ctxVis = visibleWidth(` CTX ${"━".repeat(ctxFilled)}${"─".repeat(ctxEmpty)} ${ctxPercent}% ${shortCount(ctxTokens)}/${shortCount(ctxWindow)} `);
+		const ctxVis = visibleWidth(` CTX ${"━".repeat(ctxFilled)}${"─".repeat(ctxEmpty)} ${ctxPercent}% ${shortCount(ctxTokens)}/${shortContextWindow(ctxWindow)} `);
 
 		// 左右组装
-		const leftStr = `${statusPill} ${projectPill} ${branchPill}`;
-		const leftVis = statusVis + 1 + projectVis + 1 + branchVis;
-
-		// 右侧模块优先级过滤
-		const rightItems: { pill: string; vis: number; priority: number }[] = [
-			{ pill: ctxPill, vis: ctxVis, priority: 3 },
-			{ pill: telemetryPill, vis: teleVis, priority: 2 },
-			{ pill: modelGroupPill, vis: modelGroupVis, priority: 1 },
-		];
-
-		const activeRight: string[] = [];
-		let rightVis = 0;
-		for (const item of [...rightItems].sort((a, b) => a.priority - b.priority)) {
-			const spaceNeeded = leftVis + rightVis + item.vis + 2;
-			if (spaceNeeded <= width) {
-				activeRight.push(item.pill);
-				rightVis += item.vis + (activeRight.length > 1 ? 1 : 0);
+		let leftStr = `${statusPill} ${projectPill} ${branchPill}`;
+		let leftVis = statusVis + 1 + projectVis + 1 + branchVis;
+		const maxLeftWidth = Math.min(width, leftVis);
+		if (width >= 100 && leftVis + 10 > width) {
+			const shortProject = truncateToWidth(` 📁 ${cwdBasename} `, Math.max(8, Math.floor(width * 0.18)), "…");
+			const shortProjectPill = this.theme.style(shortProject, {
+				fg: palette.project.fg, bg: pillBg(palette.project.tint), bold: true,
+			});
+			const shortBranch = truncateToWidth(`  ${branch} `, Math.max(8, Math.floor(width * 0.14)), "…");
+			const shortBranchPill = this.theme.style(shortBranch, {
+				fg: palette.branch.fg, bg: pillBg(palette.branch.tint),
+			});
+			const compactLeft = `${statusPill} ${shortProjectPill} ${shortBranchPill}`;
+			const compactLeftWidth = statusVis + 1 + visibleWidth(shortProject) + 1 + visibleWidth(shortBranch);
+			if (compactLeftWidth < leftVis) {
+				leftStr = compactLeft;
+				leftVis = compactLeftWidth;
 			}
 		}
 
-		const orderedRight = rightItems.filter(i => activeRight.includes(i.pill)).map(i => i.pill).reverse().join(" ");
+		// 右侧模块：按截图视觉顺序排列（模型 -> 思考 -> 遥测 -> CTX），空间受限时由低到高逐级裁切
+		const rightItems: { id: string; pill: string; vis: number; priority: number }[] = [
+			{ id: "model", pill: modelPill, vis: modelVis, priority: 4 },
+			{ id: "think", pill: thinkPill, vis: thinkVis, priority: 3 },
+			{ id: "telemetry", pill: telemetryPill, vis: teleVis, priority: 2 },
+			{ id: "ctx", pill: ctxPill, vis: ctxVis, priority: 1 },
+		];
+
+		const activeSet = new Set<string>();
+		let rightVis = 0;
+		for (const item of [...rightItems].sort((a, b) => b.priority - a.priority)) {
+			const gap = activeSet.size > 0 ? 1 : 0;
+			if (leftVis + rightVis + item.vis + gap + 2 <= width) {
+				activeSet.add(item.id);
+				rightVis += item.vis + gap;
+			}
+		}
+
+		const orderedRight = rightItems.filter(item => activeSet.has(item.id)).map(item => item.pill).join(" ");
 		const totalVis = leftVis + rightVis;
 
 		if (totalVis >= width) {
@@ -300,7 +347,7 @@ export class TopStatusBarComponent implements Component {
 		}
 
 		// 中间留白自适应
-		const middleSpaces = Math.max(1, width - totalVis);
+		const middleSpaces = Math.max(2, width - totalVis);
 		const fullLine = `${leftStr}\x1b[49m${" ".repeat(middleSpaces)}${orderedRight}\x1b[49m`;
 
 		return [truncateToWidth(fullLine, width)];
