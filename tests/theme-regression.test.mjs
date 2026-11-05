@@ -486,15 +486,15 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 		assert.ok(![...timers.values()].some(timer => timer.delay === 100));
 		await command("group off");
 		await command("group");
-		assert.match(notices.at(-1), /Title group: off/);
+		assert.match(notices.at(-1), /Title sync is off/);
 		assert.equal(timers.size, 0);
 		await commands.get("tabgroup").handler("review", ctx);
 		await command("status");
 		assert.match(notices.at(-1), /Title group: review/);
 		selections.push(0, undefined);
 		await command("");
-		assert.ok(prompts[0].choices[0].includes("隐藏状态栏"));
-		assert.ok(prompts[1].choices[0].includes("显示状态栏"));
+		assert.ok(prompts[0].choices[0].includes("Show / 显示 status row"));
+		assert.ok(prompts[1].choices[0].includes("Hide / 隐藏 status row"));
 		await command("on");
 		selections.push(1, 0, undefined);
 		answers.push("panel-name");

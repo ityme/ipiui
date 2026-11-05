@@ -66,7 +66,7 @@ const RAW_RAINBOW = [
 	rgbColor(60, 200, 245),  // sky/cyan
 	rgbColor(140, 150, 250), // blue/indigo
 	rgbColor(215, 130, 240), // purple/violet
-].map(color => mixColors(color, rgbColor(184, 184, 184), 0.16, "srgb"));
+].map(color => mixColors(color, rgbColor(184, 184, 184), 0.40, "srgb"));
 
 const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
@@ -572,33 +572,34 @@ export default function (pi: ExtensionAPI) {
 	const showPanel = async (ctx: ExtensionContext) => {
 		while (true) {
 			const choices = [
-				`${state.visible ? "隐藏" : "显示"}状态栏（当前${state.visible ? "显示" : "隐藏"}）`,
-				`窗格名称：${paneLabel}${customPaneLabel ? "（自定义）" : "（跟随项目）"}`,
-				`标题同步：${groupName ? `已开启 · ${groupName}` : "已关闭"}`,
-				"使用说明与快捷命令",
+				`${state.visible ? "Show / 显示" : "Hide / 隐藏"} status row / 状态栏 · ${state.visible ? "on / 已显示" : "off / 已隐藏"}`,
+				`Pane name / 窗格名称 · ${paneLabel} · ${customPaneLabel ? "custom / 自定义" : "project directory / 项目目录"}`,
+				`Title sync / 标题同步 · ${groupName ? `on / 已开启 · ${groupName}` : "off / 已关闭"}`,
+				"Help and command shortcuts / 帮助与命令",
 			];
-			const choice = await ctx.ui.select("ipiui · ↑↓ 选择 / Enter 确定 / Esc 关闭", choices);
+			const choice = await ctx.ui.select("ipiui settings / 设置 · ↑/↓ select/选择 · Enter confirm/确认 · Esc close/关闭", choices);
 			if (!choice) return;
 			if (choice === choices[0]) {
 				await handleCommand("toggle", ctx);
 			} else if (choice === choices[1]) {
-				const action = await ctx.ui.select(`窗格名称 · ${paneLabel}`, ["设置自定义名称", "恢复项目目录名"]);
-				if (action === "恢复项目目录名") await handleCommand("name reset", ctx);
-				if (action === "设置自定义名称") {
-					const name = await ctx.ui.input("窗格名称 · 最多 20 个字符，Esc 取消", paneLabel);
+				const action = await ctx.ui.select(`Pane name / 窗格名称 · ${paneLabel}`, ["Set custom name / 设置自定义名称", "Use project directory name / 使用项目目录名", "Back to settings / 返回设置"]);
+				if (action === "Use project directory name / 使用项目目录名") await handleCommand("name reset", ctx);
+				if (action === "Set custom name / 设置自定义名称") {
+					const name = await ctx.ui.input("Pane name / 窗格名称 · up to 20 characters / 最多20字符 · Esc cancels / 取消", paneLabel);
 					if (name?.trim()) await handleCommand(`name ${name}`, ctx);
 				}
 			} else if (choice === choices[2]) {
-				const actions = [groupName ? "关闭标题同步" : "开启标题同步", "切换分组", "加入默认分组"];
-				const action = await ctx.ui.select("同组窗格共享标题，不同窗口需使用不同组名", actions);
+				const actions = [groupName ? "Turn title sync off / 关闭标题同步" : "Turn title sync on / 开启标题同步", "Change group / 切换分组", "Join default group / 加入默认分组", "Back to settings / 返回设置"];
+				const action = await ctx.ui.select("Panes in the same group share a title / 同组窗格共享标题. Use different groups to isolate them / 不同组相互隔离.", actions);
 				if (action === actions[0]) await handleCommand(`group ${groupName ? "off" : defaultGroupName}`, ctx);
 				if (action === actions[2]) await handleCommand(`group ${defaultGroupName}`, ctx);
 				if (action === actions[1]) {
-					const group = await ctx.ui.input("组名 · 最多 64 个字符；同组共享标题", groupName ?? defaultGroupName);
+					const group = await ctx.ui.input("Group name / 分组名称 · up to 64 characters / 最多64字符 · Esc cancels / 取消", groupName ?? defaultGroupName);
 					if (group?.trim()) await handleCommand(`group ${group}`, ctx);
 				}
 			} else if (choice === choices[3]) {
 				await handleCommand("help", ctx);
+				return;
 			}
 		}
 	};
@@ -615,11 +616,11 @@ export default function (pi: ExtensionAPI) {
 		}
 		if (subCmd === "help") {
 			ctx.ui.notify(
-				`ipiui · /ipiui 打开面板；↑↓ 选择、Enter 确定、Esc 返回\n` +
-				`  /ipiui [on|off|toggle]  - 状态栏显隐开关 (当前: ${state.visible ? "ON" : "OFF"})\n` +
-				`  /ipiui name [NAME]      - 设置窗格名称；name reset 跟随项目 (当前: ${paneLabel})\n` +
-				`  /ipiui group [NAME|off] - 设置标题分组 (当前: ${groupName ?? "off"})\n` +
-				`  /ipiui status           - 查看当前状态信息`,
+				`ipiui · /ipiui opens settings / 打开设置. ↑/↓ select / 选择 · Enter confirm / 确认 · Esc close / 关闭.\n` +
+				`  /ipiui on|off|toggle    - Show/hide status row / 显示或隐藏状态栏 (${state.visible ? "on / 已显示" : "off / 已隐藏"})\n` +
+				`  /ipiui name [NAME]      - Set pane title / 设置窗格名称; name reset follows project / reset 恢复项目名 (${paneLabel})\n` +
+				`  /ipiui group [NAME|off] - Set title group / 设置标题分组 (${groupName ?? "off / 已关闭"})\n` +
+				`  /ipiui status           - Show current settings / 查看当前设置`,
 				"info"
 			);
 			return;
@@ -651,7 +652,7 @@ export default function (pi: ExtensionAPI) {
 
 		if (subCmd === "group") {
 			if (!param) {
-				ctx.ui.notify(groupName ? `Title group: ${groupName}; name: ${paneLabel}` : "Title group: off (use /ipiui group NAME to rejoin)", "info");
+				ctx.ui.notify(groupName ? `Title group: ${groupName}; pane name: ${paneLabel}` : "Title sync is off. Use /ipiui group NAME to rejoin.", "info");
 				return;
 			}
 			if (param === "off") {
@@ -669,7 +670,7 @@ export default function (pi: ExtensionAPI) {
 				await joinTitleGroup(param);
 				ctx.ui.notify(`Joined title group: ${param}`, "info");
 			} catch {
-				ctx.ui.notify("Could not join title group; check temporary-directory access", "error");
+				ctx.ui.notify("Could not join title group; check the group name and local temporary-directory access.", "error");
 			}
 			return;
 		}
@@ -688,7 +689,7 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.notify(`Unknown subcommand: ${subCmd}. Use /ipiui for help`, "warning");
 	};
 	pi.registerCommand("ipiui", {
-		description: "打开 ipiui 设置面板，或使用 on/off/name/group/status/help",
+		description: "Open the ipiui settings panel, or use on/off/name/group/status/help",
 		getArgumentCompletions: prefix => {
 			const commands = ["menu", "on", "off", "toggle", "name", "name reset", "group", "group all", "group off", "status", "help"];
 			const matches = commands.filter(value => value.startsWith(prefix)).map(value => ({ value, label: `/ipiui ${value}` }));
