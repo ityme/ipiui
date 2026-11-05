@@ -36,7 +36,8 @@
     "README.zh-CN.md",
     "CHANGELOG.md",
     "LICENSE",
-    "docs/styles-gallery.html"
+    "docs/styles-gallery.html",
+    "docs/status-row.png"
   ],
   "repository": {
     "type": "git",
