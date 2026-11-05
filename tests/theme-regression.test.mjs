@@ -26,7 +26,7 @@ const jiti = createJiti(path.join(projectRoot, "index.ts"), {
 		"@earendil-works/pi-tui": path.join(hostRoot, "@earendil-works/pi-tui/dist/index.js"),
 	},
 });
-const { default: extension, TopStatusBarComponent, collectUsage } = jiti(path.join(projectRoot, "index.ts"));
+const { default: extension, TopStatusBarComponent, collectUsage, getRainbowBlockPalette } = jiti(path.join(projectRoot, "index.ts"));
 const { TabTitleGroup, tabGroupDirectory } = jiti(path.join(projectRoot, "src/tab-title.ts"));
 const { getThemeByName, loadThemeFromPath } = await import(pathToFileURL(path.join(hostRoot,
 	"@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js")));
@@ -162,6 +162,31 @@ function luminance({ r, g, b }) {
 	});
 	return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
 }
+function saturation(color) {
+	const { r, g, b } = colorToRgb(color);
+	const max = Math.max(r, g, b), min = Math.min(r, g, b);
+	return max === 0 ? 0 : (max - min) / max;
+}
+function contrastRatio(a, b) {
+	const x = luminance(colorToRgb(a)), y = luminance(colorToRgb(b));
+	return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+test("all status-block foregrounds and backgrounds share muted saturation with readable contrast", () => {
+	for (const dark of [true, false]) {
+		const palette = getRainbowBlockPalette(dark);
+		const pairs = [
+			["status idle", palette.fgStatusReady, palette.bgStatusReady], ["status running", palette.fgStatusRun, palette.bgStatusRun],
+			["status error", palette.fgStatusErr, palette.bgStatusErr], ["status stopped", palette.fgStatusStp, palette.bgStatusStp],
+			["project", palette.fgProject, palette.bgProjBranch], ["branch", palette.fgBranch, palette.bgProjBranch],
+			["token in", palette.fgTokenIn, palette.bgTelemetry], ["token out", palette.fgTokenOut, palette.bgTelemetry], ["cost", palette.fgCost, palette.bgTelemetry],
+			["context", palette.ctxText, palette.bgCtx], ["bracket", palette.bracketColor, palette.bgModelThink],
+		];
+		for (const [name, fg, bg] of pairs) {
+			assert.ok(saturation(fg) <= 0.52, `${dark ? "dark" : "light"} ${name} saturation too high: ${saturation(fg)}`);
+			assert.ok(contrastRatio(fg, bg) >= 4.5, `${dark ? "dark" : "light"} ${name} contrast too low: ${contrastRatio(fg, bg)}`);
+		}
+	}
+});
 for (const style of ["rainbow_blocks"]) {
 	test(`style ${style}: fills width without overflow for CJK and emoji`, () => {
 		const theme = getThemeByName("dark");
@@ -493,8 +518,8 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 		assert.match(notices.at(-1), /Title group: review/);
 		selections.push(0, undefined);
 		await command("");
-		assert.ok(prompts[0].choices[0].includes("Show / 显示 status row"));
-		assert.ok(prompts[1].choices[0].includes("Hide / 隐藏 status row"));
+		assert.ok(prompts[0].choices[0].includes("Show status row(显示状态栏)"));
+		assert.ok(prompts[1].choices[0].includes("Hide status row(隐藏状态栏)"));
 		await command("on");
 		selections.push(1, 0, undefined);
 		answers.push("panel-name");

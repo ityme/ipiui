@@ -4,10 +4,13 @@ import {
 	type Color,
 	type Component,
 	type TUI,
+	colorToRgb,
 	mixColors,
+	oklchColor,
 	rgbColor,
 	stripTerminalSequences,
 	truncateToWidth,
+	colorToOklch,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
 
@@ -56,6 +59,12 @@ const BRAILLE_SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧",
 
 const DARK_CANVAS = rgbColor(9, 11, 16);
 const LIGHT_CANVAS = rgbColor(248, 250, 252);
+const MAX_PALETTE_CHROMA = 0.05;
+
+function softenColor(color: Color): Color {
+	const { l, c, h } = colorToOklch(color);
+	return oklchColor(l, Math.min(c * 0.72, MAX_PALETTE_CHROMA), h);
+}
 
 // 经典彩虹色谱
 const RAW_RAINBOW = [
@@ -66,7 +75,7 @@ const RAW_RAINBOW = [
 	rgbColor(60, 200, 245),  // sky/cyan
 	rgbColor(140, 150, 250), // blue/indigo
 	rgbColor(215, 130, 240), // purple/violet
-].map(color => mixColors(color, rgbColor(184, 184, 184), 0.40, "srgb"));
+].map(softenColor);
 
 const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
@@ -82,9 +91,55 @@ function rainbowChars(graphemes: string[], timeMs = 0): { ch: string; col: Color
 	});
 }
 
-function getRainbowBlockPalette(isDark: boolean) {
+function softenPalette<T extends Record<string, Color>>(palette: T): T {
+	for (const [key, color] of Object.entries(palette)) {
+		palette[key as keyof T] = softenColor(color) as T[keyof T];
+	}
+	const pairs = [
+		["fgStatusReady", "bgStatusReady"], ["fgStatusRun", "bgStatusRun"],
+		["fgStatusErr", "bgStatusErr"], ["fgStatusStp", "bgStatusStp"],
+		["fgProject", "bgProjBranch"], ["fgBranch", "bgProjBranch"],
+		["fgTokenIn", "bgTelemetry"], ["fgTokenOut", "bgTelemetry"], ["fgCost", "bgTelemetry"],
+		["ctxText", "bgCtx"], ["bracketColor", "bgModelThink"],
+	] as const;
+	for (const [foregroundKey, backgroundKey] of pairs) {
+		const foreground = palette[foregroundKey as keyof T];
+		const background = palette[backgroundKey as keyof T];
+		if (foreground && background) palette[foregroundKey as keyof T] = ensureTextContrast(foreground, background) as T[keyof T];
+	}
+	return palette;
+}
+
+function colorLuminance(color: Color): number {
+	const { r, g, b } = colorToRgb(color);
+	const linear = [r, g, b].map(channel => {
+		const value = channel / 255;
+		return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+	});
+	return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+}
+
+function ensureTextContrast(foreground: Color, background: Color): Color {
+	const ratio = (a: Color, b: Color) => {
+		const x = colorLuminance(a), y = colorLuminance(b);
+		return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+	};
+	if (ratio(foreground, background) >= 4.5) return foreground;
+	const { l, c, h } = colorToOklch(foreground);
+	const goLighter = colorLuminance(background) < 0.5;
+	let low = goLighter ? l : 0;
+	let high = goLighter ? 1 : l;
+	for (let i = 0; i < 24; i++) {
+		const mid = (low + high) / 2;
+		if (ratio(oklchColor(mid, c, h), background) >= 4.5) high = goLighter ? mid : high, low = goLighter ? low : mid;
+		else high = goLighter ? high : mid, low = goLighter ? mid : low;
+	}
+	return oklchColor(goLighter ? high : low, c, h);
+}
+
+export function getRainbowBlockPalette(isDark: boolean) {
 	if (isDark) {
-		return {
+		return softenPalette({
 			canvasBg: rgbColor(9, 11, 16),
 			
 			// 模块 1: 状态胶囊背景
@@ -121,9 +176,9 @@ function getRainbowBlockPalette(isDark: boolean) {
 			ctxText: rgbColor(203, 213, 225),
 
 			bracketColor: rgbColor(148, 163, 184),
-		};
+		});
 	} else {
-		return {
+		return softenPalette({
 			canvasBg: rgbColor(248, 250, 252),
 			bgStatusReady: mixColors(LIGHT_CANVAS, rgbColor(226, 232, 240), 0.40, "srgb"),
 			bgStatusRun: mixColors(LIGHT_CANVAS, rgbColor(187, 247, 208), 0.30, "srgb"),
@@ -153,7 +208,7 @@ function getRainbowBlockPalette(isDark: boolean) {
 			ctxText: rgbColor(51, 65, 85),
 
 			bracketColor: rgbColor(100, 116, 139),
-		};
+		});
 	}
 }
 
@@ -572,29 +627,29 @@ export default function (pi: ExtensionAPI) {
 	const showPanel = async (ctx: ExtensionContext) => {
 		while (true) {
 			const choices = [
-				`${state.visible ? "Show / 显示" : "Hide / 隐藏"} status row / 状态栏 · ${state.visible ? "on / 已显示" : "off / 已隐藏"}`,
-				`Pane name / 窗格名称 · ${paneLabel} · ${customPaneLabel ? "custom / 自定义" : "project directory / 项目目录"}`,
-				`Title sync / 标题同步 · ${groupName ? `on / 已开启 · ${groupName}` : "off / 已关闭"}`,
-				"Help and command shortcuts / 帮助与命令",
+				`${state.visible ? "Show status row(显示状态栏)" : "Hide status row(隐藏状态栏)"} · ${state.visible ? "On" : "Off"}`,
+				`Pane name(窗格名称) · ${paneLabel} · ${customPaneLabel ? "Custom" : "Project directory"}`,
+				`Title sync(标题同步) · ${groupName ? `On · ${groupName}` : "Off"}`,
+				"Help and command shortcuts(帮助与快捷命令)",
 			];
-			const choice = await ctx.ui.select("ipiui settings / 设置 · ↑/↓ select/选择 · Enter confirm/确认 · Esc close/关闭", choices);
+			const choice = await ctx.ui.select("ipiui settings · ↑/↓ select · Enter confirm · Esc close", choices);
 			if (!choice) return;
 			if (choice === choices[0]) {
 				await handleCommand("toggle", ctx);
 			} else if (choice === choices[1]) {
-				const action = await ctx.ui.select(`Pane name / 窗格名称 · ${paneLabel}`, ["Set custom name / 设置自定义名称", "Use project directory name / 使用项目目录名", "Back to settings / 返回设置"]);
-				if (action === "Use project directory name / 使用项目目录名") await handleCommand("name reset", ctx);
-				if (action === "Set custom name / 设置自定义名称") {
-					const name = await ctx.ui.input("Pane name / 窗格名称 · up to 20 characters / 最多20字符 · Esc cancels / 取消", paneLabel);
+				const action = await ctx.ui.select(`Pane name · ${paneLabel}`, ["Set custom name(设置自定义名称)", "Use project directory name(使用项目目录名)", "Back to settings(返回设置)"]);
+				if (action === "Use project directory name(使用项目目录名)") await handleCommand("name reset", ctx);
+				if (action === "Set custom name(设置自定义名称)") {
+					const name = await ctx.ui.input("Pane name · up to 20 characters · Esc cancels", paneLabel);
 					if (name?.trim()) await handleCommand(`name ${name}`, ctx);
 				}
 			} else if (choice === choices[2]) {
-				const actions = [groupName ? "Turn title sync off / 关闭标题同步" : "Turn title sync on / 开启标题同步", "Change group / 切换分组", "Join default group / 加入默认分组", "Back to settings / 返回设置"];
-				const action = await ctx.ui.select("Panes in the same group share a title / 同组窗格共享标题. Use different groups to isolate them / 不同组相互隔离.", actions);
+				const actions = [groupName ? "Turn title sync off(关闭标题同步)" : "Turn title sync on(开启标题同步)", "Change group(切换分组)", "Join default group(加入默认分组)", "Back to settings(返回设置)"];
+				const action = await ctx.ui.select("Panes in the same group share a title. Use different groups to isolate them.", actions);
 				if (action === actions[0]) await handleCommand(`group ${groupName ? "off" : defaultGroupName}`, ctx);
 				if (action === actions[2]) await handleCommand(`group ${defaultGroupName}`, ctx);
 				if (action === actions[1]) {
-					const group = await ctx.ui.input("Group name / 分组名称 · up to 64 characters / 最多64字符 · Esc cancels / 取消", groupName ?? defaultGroupName);
+					const group = await ctx.ui.input("Group name · up to 64 characters · Esc cancels", groupName ?? defaultGroupName);
 					if (group?.trim()) await handleCommand(`group ${group}`, ctx);
 				}
 			} else if (choice === choices[3]) {
