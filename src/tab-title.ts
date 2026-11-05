@@ -12,15 +12,14 @@ interface PaneRecord {
 	label: string;
 	status: TabStatus;
 }
-const SYMBOLS: Record<TabStatus, string> = {
-	idle: "○", running: "▶", done: "✓", error: "✗", aborted: "■",
-};
+const TAB_STATUSES: Set<string> = new Set<TabStatus>(["idle", "running", "done", "error", "aborted"]);
+const BRAILLE_SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 export function cleanTitleLabel(text: string): string {
 	// Reject escape/control sequences and delimiters that could forge other members.
 	return [...text.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
 		.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
-		.replace(/[\x00-\x1f\x7f-\x9f\[\]|]/g, " ").replace(/\s+/g, " ").trim()].slice(0, 20).join("") || "cmd";
+		.replace(/[\x00-\x1f\x7f-\x9f\[\]|┃⣿⠿]/g, " ").replace(/\s+/g, " ").trim()].slice(0, 20).join("") || "cmd";
 }
 
 export function tabGroupDirectory(group: string, root?: string): string {
@@ -28,9 +27,14 @@ export function tabGroupDirectory(group: string, root?: string): string {
 	return join(root ?? join(tmpdir(), `ipiui-tabs-${user}`), createHash("sha256").update(group).digest("hex"));
 }
 
-export function formatTabTitle(records: PaneRecord[]): string {
-	return "[" + [...records].sort((a, b) => a.started - b.started || a.id.localeCompare(b.id))
-		.map((record, index) => `${index + 1}${SYMBOLS[record.status]}${cleanTitleLabel(record.label)}`).join(" ") + "]";
+export function formatTabTitle(records: PaneRecord[], now: number = Date.now()): string {
+	const spinnerIndex = Math.floor(now / 100) % BRAILLE_SPINNER.length;
+	const spinner = BRAILLE_SPINNER[spinnerIndex];
+	return [...records].sort((a, b) => a.started - b.started || a.id.localeCompare(b.id))
+		.map(record => {
+			const label = cleanTitleLabel(record.label);
+			return record.status === "running" ? `${spinner}${label}` : label;
+		}).join(" ┃ ");
 }
 
 interface TitleGroupOptions {
@@ -38,7 +42,7 @@ interface TitleGroupOptions {
 	intervalMs?: number;
 	staleMs?: number;
 	now?: () => number;
-	onTitle: (title: string) => void;
+	onTitle: (title: string, hasRunning: boolean) => void;
 	onError: (error: unknown) => void;
 }
 
@@ -53,6 +57,10 @@ export class TabTitleGroup {
 	private label = "cmd";
 	private status: TabStatus = "idle";
 	private timer?: ReturnType<typeof setInterval>;
+	private animationTimer?: ReturnType<typeof setInterval>;
+	private records: PaneRecord[] = [];
+	private refreshing = false;
+	private refreshRequested = false;
 	private queue: Promise<void> = Promise.resolve();
 	private closed = false;
 	private reportedError = false;
@@ -77,6 +85,7 @@ export class TabTitleGroup {
 		this.status = status;
 		await mkdir(this.directory, { recursive: true, mode: 0o700 });
 		await this.refresh();
+		if (this.closed) return;
 		if (this.reportedError) throw new Error("Title group storage is unavailable");
 		this.timer = setInterval(() => { void this.refresh(); }, this.options.intervalMs ?? 1000);
 		this.timer.unref();
@@ -89,39 +98,65 @@ export class TabTitleGroup {
 	}
 
 	refresh(): Promise<void> {
-		this.queue = this.queue.then(async () => {
-			if (this.closed || !this.file || !this.directory) return;
-			const now = this.now();
-			const record: PaneRecord = {
-				version: 1, id: this.id, started: this.started, updated: now, label: this.label, status: this.status,
-			};
-			const temporary = this.file + ".tmp";
-			await writeFile(temporary, JSON.stringify(record), { mode: 0o600 });
-			await rename(temporary, this.file);
-			const names = (await readdir(this.directory)).filter(name => /^[a-f0-9-]+\.json$/.test(name)).slice(0, 100);
-			const records = await Promise.all(names.map(async name => {
-				try {
-					const content = await readFile(join(this.directory!, name), "utf8");
-					if (content.length > 4096) return;
-					const value: unknown = JSON.parse(content);
-					if (!this.isLiveRecord(value, now) || name !== `${value.id}.json`) return;
-					return value;
-				} catch { return; } // A peer can leave while the directory is being read.
-			}));
-			if (!this.closed) this.options.onTitle(formatTabTitle(records.filter((value): value is PaneRecord => !!value)));
+		if (this.closed) return Promise.resolve();
+		this.refreshRequested = true;
+		if (this.refreshing) return this.queue;
+		this.refreshing = true;
+		this.queue = Promise.resolve().then(async () => {
+			while (this.refreshRequested && !this.closed && this.file && this.directory) {
+				this.refreshRequested = false;
+				const now = this.now();
+				const record: PaneRecord = {
+					version: 1, id: this.id, started: this.started, updated: now, label: this.label, status: this.status,
+				};
+				const temporary = this.file + ".tmp";
+				await writeFile(temporary, JSON.stringify(record), { mode: 0o600 });
+				await rename(temporary, this.file);
+				const names = (await readdir(this.directory)).filter(name => /^[a-f0-9-]+\.json$/.test(name));
+				const records = await Promise.all(names.map(async name => {
+					try {
+						const content = await readFile(join(this.directory!, name), "utf8");
+						if (content.length > 4096) return;
+						const value: unknown = JSON.parse(content);
+						if (!this.isLiveRecord(value, now) || name !== `${value.id}.json`) return;
+						return value;
+					} catch { return; } // A peer can leave while the directory is being read.
+				}));
+				this.records = records.filter((value): value is PaneRecord => !!value);
+				if (!this.closed) this.publishTitle();
+			}
 		}).catch(error => {
 			if (!this.closed && !this.reportedError) {
 				this.reportedError = true;
 				this.options.onError(error);
 			}
-		});
+		}).finally(() => { this.refreshing = false; });
 		return this.queue;
+	}
+
+	private publishTitle(): void {
+		if (this.closed) return;
+		const now = this.now();
+		const liveRecords = this.records.filter(record => this.isLiveRecord(record, now));
+		const hasRunning = liveRecords.some(record => record.status === "running");
+		if (hasRunning && !this.animationTimer) {
+			// Animate cached peer snapshots; disk synchronization stays at heartbeat frequency.
+			this.animationTimer = setInterval(() => this.publishTitle(), 100);
+			this.animationTimer.unref();
+		} else if (!hasRunning && this.animationTimer) {
+			clearInterval(this.animationTimer);
+			this.animationTimer = undefined;
+		}
+		this.options.onTitle(formatTabTitle(liveRecords, now), hasRunning);
 	}
 
 	async stop(): Promise<void> {
 		this.closed = true;
 		if (this.timer) clearInterval(this.timer);
 		this.timer = undefined;
+		if (this.animationTimer) clearInterval(this.animationTimer);
+		this.animationTimer = undefined;
+		this.records = [];
 		await this.queue;
 		if (this.file) {
 			// Only delete this member's two files, never peer records or the shared directory.
@@ -136,6 +171,6 @@ export class TabTitleGroup {
 			&& typeof record.started === "number" && Number.isFinite(record.started)
 			&& typeof record.updated === "number" && record.updated <= now + this.staleMs
 			&& now - record.updated <= this.staleMs && typeof record.label === "string" && record.label.length <= 80
-			&& typeof record.status === "string" && Object.hasOwn(SYMBOLS, record.status);
+			&& typeof record.status === "string" && TAB_STATUSES.has(record.status);
 	}
 }
