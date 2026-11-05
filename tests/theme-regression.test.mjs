@@ -397,11 +397,15 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 	process.env.IPIUI_TEST_GROUP_ROOT = root;
 	process.env.IPIUI_GROUP = "review";
 	const handlers = new Map(), commands = new Map(), titles = [], notices = [];
+	let renderRequests = 0;
 	const ctx = {
 		...context, mode: "tui", isIdle: () => true,
 		sessionManager: { getEntries: () => [] },
 		ui: { setTitle: title => titles.push(title), notify: text => notices.push(text),
-			setWorkingVisible() {}, setFooter() {}, setWidget() {}, setEditorComponent() {} },
+			setWorkingVisible() {}, setFooter() {},
+			setWidget(_key, factory) {
+				factory({ requestRender: () => { renderRequests++; } }, getThemeByName("dark"));
+			}, setEditorComponent() {} },
 	};
 	extension({ on: (name, handler) => handlers.set(name, handler),
 		registerCommand: (name, command) => commands.set(name, command) });
@@ -423,7 +427,12 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 		const files = await fs.readdir(directory);
 		const snapshots = await Promise.all(files.map(file => fs.readFile(path.join(directory, file), "utf8")));
 		const before = titles.length;
-		for (const timer of [...timers.values()].filter(timer => timer.delay === 100)) timer.callback();
+		const originalNow = Date.now;
+		try {
+			const nextFrame = originalNow() + 100;
+			Date.now = () => nextFrame;
+			for (const timer of [...timers.values()].filter(timer => timer.delay === 100)) timer.callback();
+		} finally { Date.now = originalNow; }
 		await flush();
 		assert.ok(titles.length > before, "An idle pane must publish peer animation frames");
 		assert.deepEqual(await Promise.all(files.map(file => fs.readFile(path.join(directory, file), "utf8"))), snapshots,
@@ -445,7 +454,16 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 		await emit("agent_start");
 		await command("group off");
 		assert.equal(titles.at(-1), "pi");
-		assert.equal(timers.size, 2, "Disabling titles must preserve only local status timers");
+		assert.equal(timers.size, 1, "Only one local animation timer is needed");
+		const animation = [...timers.values()][0];
+		await command("off");
+		const hiddenRequests = renderRequests;
+		animation.callback();
+		assert.equal(renderRequests, hiddenRequests, "Hidden status bars must skip animation redraws");
+		await command("on");
+		const visibleRequests = renderRequests;
+		animation.callback();
+		assert.equal(renderRequests, visibleRequests + 1);
 		await commands.get("tabgroup").handler("review", ctx);
 		await emit("session_shutdown");
 		assert.equal(timers.size, 0, "Shutdown during a run must release every timer");

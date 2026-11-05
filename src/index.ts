@@ -69,8 +69,9 @@ const RAW_RAINBOW = [
 ];
 
 // 每个字母赋予动态彩虹渐变色
-function rainbowChars(text: string, timeMs = 0): { ch: string; col: Color }[] {
-	const graphemes = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text)].map(s => s.segment);
+const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+function rainbowChars(graphemes: string[], timeMs = 0): { ch: string; col: Color }[] {
 	const total = graphemes.length;
 	const shift = (timeMs / 4000) % 1;
 	return graphemes.map((ch, i) => {
@@ -156,6 +157,9 @@ function getRainbowBlockPalette(isDark: boolean) {
 	}
 }
 
+const DARK_PALETTE = getRainbowBlockPalette(true);
+const LIGHT_PALETTE = getRainbowBlockPalette(false);
+
 function singleLine(text: string): string {
 	return stripTerminalSequences(text).replace(/[\x00-\x1f\x7f-\x9f]/g, " ").replace(/ +/g, " ").trim();
 }
@@ -195,6 +199,9 @@ function formatDuration(sec: number): string {
 }
 
 export class TopStatusBarComponent implements Component {
+	private rainbowText = "";
+	private rainbowGraphemes: string[] = [];
+
 	constructor(private state: TopBarState, private theme: Theme, private context: ExtensionContext) {}
 
 	updateContext(context: ExtensionContext) {
@@ -206,7 +213,7 @@ export class TopStatusBarComponent implements Component {
 		const st = this.state;
 		const now = Date.now();
 		const isDark = this.theme.appearance !== "light";
-		const p = getRainbowBlockPalette(isDark);
+		const p = isDark ? DARK_PALETTE : LIGHT_PALETTE;
 
 		// 1. Status 徽章（使用 Pi 原生状态名：idle, running, error, aborted）
 		let statusIcon = "⠿";
@@ -291,10 +298,14 @@ export class TopStatusBarComponent implements Component {
 		const rawThink = (st.thinkingLevel ?? "med").toLowerCase();
 		const thinkFull = rawThink === "med" ? "medium" : rawThink;
 		const m3RawText = `🤖 ${model} · ${thinkFull}`;
+		if (m3RawText !== this.rainbowText) {
+			this.rainbowText = m3RawText;
+			this.rainbowGraphemes = [...GRAPHEME_SEGMENTER.segment(m3RawText)].map(part => part.segment);
+		}
 		const m3BracketOpen = this.theme.style("[", { fg: p.bracketColor, bg: p.bgModelThink, bold: true });
 		const m3BracketClose = this.theme.style("]", { fg: p.bracketColor, bg: p.bgModelThink, bold: true });
 		let m3RainbowContent = "";
-		for (const { ch, col } of rainbowChars(m3RawText, now)) {
+		for (const { ch, col } of rainbowChars(this.rainbowGraphemes, now)) {
 			m3RainbowContent += this.theme.style(ch, { fg: col, bg: p.bgModelThink, bold: true });
 		}
 		const m3Pill = `${m3BracketOpen}${m3RainbowContent}${m3BracketClose}`;
@@ -371,7 +382,6 @@ export default function (pi: ExtensionAPI) {
 	let tuiInstance: TUI | null = null;
 	let bar: TopStatusBarComponent | null = null;
 	let stopBranchWatch: (() => void) | undefined;
-	let timer: ReturnType<typeof setInterval> | undefined;
 	let iconTimer: ReturnType<typeof setInterval> | undefined;
 	const activeTools = new Map<string, string>();
 	let lastAssistantFailed = false;
@@ -421,8 +431,6 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	const stopTimer = () => {
-		if (timer) clearInterval(timer);
-		timer = undefined;
 		stopIconTimer();
 	};
 	const stopIconTimer = () => {
@@ -431,7 +439,9 @@ export default function (pi: ExtensionAPI) {
 	};
 	const startIconTimer = () => {
 		if (iconTimer) return;
-		iconTimer = setInterval(redraw, 100);
+		iconTimer = setInterval(() => {
+			if (state.visible) redraw();
+		}, 100);
 		iconTimer.unref();
 	};
 	const redraw = () => {
@@ -511,7 +521,6 @@ export default function (pi: ExtensionAPI) {
 		state.errorMessage = undefined;
 		lastAssistantFailed = false;
 		stopTimer();
-		timer = setInterval(redraw, 1000);
 		startIconTimer();
 		redraw();
 	});

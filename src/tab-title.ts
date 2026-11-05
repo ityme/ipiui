@@ -27,14 +27,18 @@ export function tabGroupDirectory(group: string, root?: string): string {
 	return join(root ?? join(tmpdir(), `ipiui-tabs-${user}`), createHash("sha256").update(group).digest("hex"));
 }
 
-export function formatTabTitle(records: PaneRecord[], now: number = Date.now()): string {
-	const spinnerIndex = Math.floor(now / 100) % BRAILLE_SPINNER.length;
-	const spinner = BRAILLE_SPINNER[spinnerIndex];
+function prepareRecords(records: PaneRecord[]): PaneRecord[] {
 	return [...records].sort((a, b) => a.started - b.started || a.id.localeCompare(b.id))
-		.map(record => {
-			const label = cleanTitleLabel(record.label);
-			return record.status === "running" ? `${spinner}${label}` : label;
-		}).join(" ┃ ");
+		.map(record => ({ ...record, label: cleanTitleLabel(record.label) }));
+}
+
+function formatPreparedTitle(records: PaneRecord[], now: number): string {
+	const spinner = BRAILLE_SPINNER[Math.floor(now / 100) % BRAILLE_SPINNER.length];
+	return records.map(record => `${record.status === "running" ? spinner : ""}${record.label}`).join(" ┃ ");
+}
+
+export function formatTabTitle(records: PaneRecord[], now: number = Date.now()): string {
+	return formatPreparedTitle(prepareRecords(records), now);
 }
 
 interface TitleGroupOptions {
@@ -59,6 +63,8 @@ export class TabTitleGroup {
 	private timer?: ReturnType<typeof setInterval>;
 	private animationTimer?: ReturnType<typeof setInterval>;
 	private records: PaneRecord[] = [];
+	private lastTitle?: string;
+	private lastHasRunning?: boolean;
 	private refreshing = false;
 	private refreshRequested = false;
 	private queue: Promise<void> = Promise.resolve();
@@ -122,7 +128,7 @@ export class TabTitleGroup {
 						return value;
 					} catch { return; } // A peer can leave while the directory is being read.
 				}));
-				this.records = records.filter((value): value is PaneRecord => !!value);
+				this.records = prepareRecords(records.filter((value): value is PaneRecord => !!value));
 				if (!this.closed) this.publishTitle();
 			}
 		}).catch(error => {
@@ -147,7 +153,12 @@ export class TabTitleGroup {
 			clearInterval(this.animationTimer);
 			this.animationTimer = undefined;
 		}
-		this.options.onTitle(formatTabTitle(liveRecords, now), hasRunning);
+		const title = formatPreparedTitle(liveRecords, now);
+		if (title !== this.lastTitle || hasRunning !== this.lastHasRunning) {
+			this.lastTitle = title;
+			this.lastHasRunning = hasRunning;
+			this.options.onTitle(title, hasRunning);
+		}
 	}
 
 	async stop(): Promise<void> {

@@ -75,7 +75,7 @@ When running multiple split panes in Windows Terminal, each pane publishes a com
 - `/ipiui group NAME` — isolate this pane into a custom group.
 - `/ipiui group off` — disable title management and restore to `pi`.
 
-Only running members show a braille spinner; finished/idle members show their label alone. Every member animates cached peer records at 100ms intervals while any member is running; disk synchronization runs once per second. Animation frames do not read or write files. Cross-process state uses per-member temporary JSON files with atomic replacement; shutdown removes only that member's files. All timers stop on shutdown or group opt-out.
+Only running members show a braille spinner; finished/idle members show their label alone. Every member animates cached peer records at 100ms intervals while any member is running; disk synchronization runs once per second. Animation frames do not read or write files. Unchanged titles are not republished by animation/sync callbacks; a separate 1.5s heartbeat reasserts the title when Pi overwrites it. Status animation skips redraw requests while the row is hidden, and fixed palettes and model text segmentation are cached. Cross-process state uses per-member temporary JSON files with atomic replacement; shutdown removes only that member's files. All timers stop on shutdown or group opt-out.
 
 Windows Terminal titles are plain text: individual project labels cannot use the status row's ANSI colors. No title color escape sequences are emitted.
 

@@ -75,7 +75,9 @@ test("concurrent refreshes coalesce and keep the latest status", async () => {
 		await member.start("work", "api", "idle");
 		publications = 0;
 		await Promise.all(Array.from({ length: 100 }, () => member.refresh()));
-		assert.equal(publications, 1, "A burst of ticks should perform one disk refresh");
+		assert.equal(publications, 0, "Unchanged titles must not be republished on heartbeat refreshes");
+		await member.update("idle", "renamed");
+		assert.equal(publications, 1, "A label change must publish immediately");
 		await Promise.all([member.update("running"), member.update("done", "latest")]);
 		assert.equal(title, "latest");
 	} finally {
