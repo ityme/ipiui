@@ -78,6 +78,32 @@ test("running icon animates with braille rotation", () => {
 	}
 });
 
+test("model, usage and CTX share one animated rainbow band including brackets", () => {
+	const originalNow = Date.now;
+	const styled = [];
+	const baseTheme = getThemeByName("dark");
+	const theme = Object.create(baseTheme);
+	theme.style = (text, options) => { styled.push({ text, fg: colorToRgb(options.fg) }); return baseTheme.style(text, options); };
+	const component = new TopStatusBarComponent({ status: "idle", visible: true, style: "rainbow_blocks",
+		modelId: "gpt-6.1-sol", thinkingLevel: "high", usage: { input: 17900000, output: 115900, total: 0, cost: 22.52 },
+	}, theme, context);
+	const expected = "[🤖 gpt-6.1-sol · high] [⬆️17.9M ⬇️115.9k 💰 22.52¥] [CTX ━━────── 19% 24.5k/128.0k]";
+	try {
+		Date.now = () => 100_000;
+		const line = component.render(220)[0];
+		assert.ok(plain(line).includes(expected));
+		const band = styled.slice(styled.findIndex((item, i) => item.text === "[" && styled[i + 1]?.text === "🤖"));
+		assert.equal(band.map(item => item.text).join(""), expected.replaceAll("] [", "]["));
+		const firstColors = band.map(item => item.fg);
+		assert.ok(new Set(firstColors.map(JSON.stringify)).size > 12);
+		styled.length = 0;
+		Date.now = () => 100_700;
+		component.render(220);
+		const second = styled.slice(-band.length).map(item => item.fg);
+		assert.notDeepEqual(second, firstColors);
+	} finally { Date.now = originalNow; }
+});
+
 test("information order, unknown context, cumulative totals, branch and path", () => {
 	const splitComp = new TopStatusBarComponent({ status: "idle", visible: true, style: "rainbow_blocks",
 		modelId: "relay/gemini3.8flash", thinkingLevel: "high", gitBranch: "dev", cwd: "I:/ispace/ipiui",

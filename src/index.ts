@@ -68,9 +68,11 @@ const RAW_RAINBOW = [
 	rgbColor(215, 130, 240), // purple/violet
 ];
 
+const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
 // 每个字母赋予动态彩虹渐变色
 function rainbowChars(text: string, timeMs = 0): { ch: string; col: Color }[] {
-	const graphemes = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text)].map(s => s.segment);
+	const graphemes = [...GRAPHEME_SEGMENTER.segment(text)].map(s => s.segment);
 	const total = graphemes.length;
 	const shift = (timeMs / 4000) % 1;
 	return graphemes.map((ch, i) => {
@@ -260,7 +262,6 @@ export class TopStatusBarComponent implements Component {
 		const ctxTotalBlocks = 8;
 		const ctxFilled = Math.max(0, Math.min(ctxTotalBlocks, Math.round((ctxPercent / 100) * ctxTotalBlocks)));
 		const ctxEmpty = ctxTotalBlocks - ctxFilled;
-		const ctxBarColor = ctxPercent > 80 ? p.ctxHigh : ctxPercent > 60 ? p.ctxMed : p.ctxLow;
 
 		// 4. 五大独立模块构建 (带方括号 [] 区分，同模块同背景色)
 
@@ -279,38 +280,11 @@ export class TopStatusBarComponent implements Component {
 		const m2Pill = `${m2BracketOpen}${m2Proj} ${m2Branch}${m2BracketClose}`;
 		const m2Vis = 1 + visibleWidth(`📁 ${cwdBasename}`) + 1 + visibleWidth(`${branch}`) + 1;
 
-		// 模块 3: [🤖 gemini-3.8-flash · medium(每个字母都是彩虹色)]
 		const rawThink = (st.thinkingLevel ?? "med").toLowerCase();
 		const thinkFull = rawThink === "med" ? "medium" : rawThink;
-		const m3RawText = `🤖 ${model} · ${thinkFull}`;
-		const m3BracketOpen = this.theme.style("[", { fg: p.bracketColor, bg: p.bgModelThink, bold: true });
-		const m3BracketClose = this.theme.style("]", { fg: p.bracketColor, bg: p.bgModelThink, bold: true });
-		let m3RainbowContent = "";
-		for (const { ch, col } of rainbowChars(m3RawText, now)) {
-			m3RainbowContent += this.theme.style(ch, { fg: col, bg: p.bgModelThink, bold: true });
-		}
-		const m3Pill = `${m3BracketOpen}${m3RainbowContent}${m3BracketClose}`;
-		const m3Vis = 1 + visibleWidth(m3RawText) + 1;
-
-		// 模块 4: [⬆️68.7M ⬇️349.9k 💰 176.08¥] (无多余空格，金额前置💰后置¥)
-		const m4BracketOpen = this.theme.style("[", { fg: p.bracketColor, bg: p.bgTelemetry, bold: true });
-		const m4BracketClose = this.theme.style("]", { fg: p.bracketColor, bg: p.bgTelemetry, bold: true });
-		const m4In = this.theme.style(`⬆️${shortCount(usage.input)}`, { fg: p.fgTokenIn, bg: p.bgTelemetry });
-		const m4Out = this.theme.style(`⬇️${shortCount(usage.output)}`, { fg: p.fgTokenOut, bg: p.bgTelemetry });
-		const m4Cost = this.theme.style(`💰 ${usage.cost.toFixed(2)}¥`, { fg: p.fgCost, bg: p.bgTelemetry, bold: true });
-		const m4Pill = `${m4BracketOpen}${m4In} ${m4Out} ${m4Cost}${m4BracketClose}`;
-		const m4Vis = 1 + visibleWidth(`⬆️${shortCount(usage.input)}`) + 1 + visibleWidth(`⬇️${shortCount(usage.output)}`) + 1 + visibleWidth(`💰 ${usage.cost.toFixed(2)}¥`) + 1;
-
-		// 模块 5: [CTX ━━━━━━── 75% 786.3k/1M]
-		const m5BracketOpen = this.theme.style("[", { fg: p.bracketColor, bg: p.bgCtx, bold: true });
-		const m5BracketClose = this.theme.style("]", { fg: p.bracketColor, bg: p.bgCtx, bold: true });
-		const m5Title = this.theme.style("CTX ", { fg: p.ctxText, bg: p.bgCtx, bold: true });
-		const m5BarFilled = this.theme.style("━".repeat(ctxFilled), { fg: ctxBarColor, bg: p.bgCtx, bold: true });
-		const m5BarEmpty = this.theme.style("─".repeat(ctxEmpty), { fg: p.ctxTrack, bg: p.bgCtx });
-		const m5Num = this.theme.style(` ${ctxPercent}% `, { fg: ctxBarColor, bg: p.bgCtx, bold: true });
-		const m5Ratio = this.theme.style(`${shortCount(ctxTokens)}/${shortContextWindow(ctxWindow)}`, { fg: p.ctxText, bg: p.bgCtx });
-		const m5Pill = `${m5BracketOpen}${m5Title}${m5BarFilled}${m5BarEmpty}${m5Num}${m5Ratio}${m5BracketClose}`;
-		const m5Vis = 1 + visibleWidth(`CTX ${"━".repeat(ctxFilled)}${"─".repeat(ctxEmpty)} ${ctxPercent}% ${shortCount(ctxTokens)}/${shortContextWindow(ctxWindow)}`) + 1;
+		const m3RawText = `[🤖 ${model} · ${thinkFull}]`;
+		const m4RawText = `[⬆️${shortCount(usage.input)} ⬇️${shortCount(usage.output)} 💰 ${usage.cost.toFixed(2)}¥]`;
+		const m5RawText = `[CTX ${"━".repeat(ctxFilled)}${"─".repeat(ctxEmpty)} ${ctxPercent}% ${shortCount(ctxTokens)}/${shortContextWindow(ctxWindow)}]`;
 
 		// 左右组装：
 		// 左侧: 模块 1 (状态)
@@ -318,11 +292,11 @@ export class TopStatusBarComponent implements Component {
 		const leftVis = m1Vis;
 
 		// 右侧: 模块 2 (项目分支) + 模块 3 (模型彩虹思考) + 模块 4 (遥测) + 模块 5 (CTX)
-		const rightItems: { id: string; pill: string; vis: number; priority: number }[] = [
+		const rightItems: { id: string; pill: string; vis: number; priority: number; bg?: Color }[] = [
 			{ id: "proj_branch", pill: m2Pill, vis: m2Vis, priority: 4 },
-			{ id: "model_think", pill: m3Pill, vis: m3Vis, priority: 3 },
-			{ id: "telemetry", pill: m4Pill, vis: m4Vis, priority: 2 },
-			{ id: "ctx", pill: m5Pill, vis: m5Vis, priority: 1 },
+			{ id: "model_think", pill: m3RawText, vis: visibleWidth(m3RawText), priority: 3, bg: p.bgModelThink },
+			{ id: "telemetry", pill: m4RawText, vis: visibleWidth(m4RawText), priority: 2, bg: p.bgTelemetry },
+			{ id: "ctx", pill: m5RawText, vis: visibleWidth(m5RawText), priority: 1, bg: p.bgCtx },
 		];
 
 		const activeSet = new Set<string>();
@@ -336,7 +310,20 @@ export class TopStatusBarComponent implements Component {
 		}
 
 		// 右侧保持严格视觉顺序：模块 2 -> 模块 3 -> 模块 4 -> 模块 5
-		const orderedRight = rightItems.filter(item => activeSet.has(item.id)).map(item => item.pill).join(" ");
+		const visibleItems = rightItems.filter(item => activeSet.has(item.id));
+		// Build one color band across all visible telemetry blocks, including brackets and gaps.
+		const band = rainbowChars(visibleItems.filter(item => item.bg !== undefined).map(item => item.pill).join(" "), now);
+		let bandIndex = 0;
+		const orderedRight = visibleItems.map(item => {
+			if (item.bg === undefined) return item.pill;
+			const letters = [...GRAPHEME_SEGMENTER.segment(item.pill)];
+			const text = letters.map(() => {
+				const { ch, col } = band[bandIndex++];
+				return this.theme.style(ch, { fg: col, bg: item.bg, bold: true });
+			}).join("");
+			bandIndex++; // The inter-block space also occupies a position in the shared band.
+			return text;
+		}).join(" ");
 		const totalVis = leftVis + (activeSet.size > 0 ? rightVis : 0);
 
 		if (totalVis >= width) {

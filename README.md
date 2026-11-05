@@ -26,10 +26,10 @@ Information order:
 
 1. 状态徽章固定宽度（**⠿ RDY 0s ●**）并显示符号与文字之间的空格：空闲为 `⠿ RDY 0s ●`、运行中为 `⠋ RUN 6s ●`、错误为 `✗ ERR 4s ●`、停止为 `■ STP 2s ●`。状态码统一三个字符，耗时一律使用 `s`，切换状态时胶囊宽度保持不变。
 2. 项目名和 Git 分支：`📁 ipiui`、` dev`。
-3. 模型胶囊：`🤖 gemini-3.8-flash`；思考等级为独立胶囊：`✦ high`、`✦ medium`、`✦ low` 等，保留 Pi 提供的实际等级名称，`med` 显示为 `medium`。
+3. 模型与思考等级共用一个模块：`[🤖 gemini-3.8-flash · high]`，`med` 显示为 `medium`。
 4. Token 显示为 `⬆️ 15.0M ⬇️ 167k`。不再显示难以理解的 `Σ` 总量。
 5. 费用使用 `💰 21.12¥` 格式；Pi 的累计费用本身仍以美元估算数值显示，只是按要求使用 `¥` 外观标记，并不进行货币汇率转换。
-6. CTX 胶囊包含字符进度条、百分比和已用/上限。
+6. CTX 胶囊包含字符进度条、百分比和已用/上限。模型、Token/费用和 CTX 三个模块的全部文字（包括括号）共享连续的动态彩虹色带；保留各模块背景色，CTX 不再使用固定压力色。
 7. 状态与数据块使用相邻空格分隔，不加入括号、竖线等额外分隔符。
 
 Totals follow Pi's footer accounting across all session entries, including usage entries, tools, compaction and branch summaries. They are not restricted to the latest response or the post-compaction context.
