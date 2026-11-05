@@ -34,7 +34,7 @@ pi install I:/ispace/ipiui
 pi install git:github.com/ityme/ipiui
 ```
 
-发布到 npm 后可用 `pi install npm:ipiui` 安装；目前该包尚未发布到 npm。
+npm 包名为 `@ityme/ipiui`（不带作用域的名称与已有包过于相似，被 npm 拒绝）。发布成功后使用 `pi install npm:@ityme/ipiui` 安装。在本项目目录执行 `npm publish --access public` 发布；Pi 内的命令仍为 `/ipiui`。
 
 安装后重启 Pi 或运行 `/reload`。也可用以下命令只在当前 Pi 进程中试用，不写入包配置：
 

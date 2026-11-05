@@ -34,7 +34,7 @@ For a project-local install, add `--local`. Pi will load the package directory i
 pi install git:github.com/ityme/ipiui
 ```
 
-After publication to npm, use `pi install npm:ipiui`. The repository is not published to npm yet.
+The npm package name is `@ityme/ipiui` (the unscoped name is rejected by npm because it resembles another package). After publication, install with `pi install npm:@ityme/ipiui`. To publish from this directory, run `npm publish --access public`. The Pi command remains `/ipiui`.
 
 Restart Pi or run `/reload` after installation. To try a checkout for one invocation without saving package settings:
 
