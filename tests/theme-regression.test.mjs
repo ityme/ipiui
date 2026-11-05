@@ -30,7 +30,7 @@ const { default: extension, TopStatusBarComponent, collectUsage, getRainbowBlock
 const { TabTitleGroup, tabGroupDirectory } = jiti(path.join(projectRoot, "src/tab-title.ts"));
 const { getThemeByName, loadThemeFromPath } = await import(pathToFileURL(path.join(hostRoot,
 	"@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js")));
-const { visibleWidth, stripTerminalSequences, colorToRgb, indexedColor, TuiMainScreen,
+const { visibleWidth, stripTerminalSequences, colorToRgb, colorToOklch, indexedColor, TuiMainScreen,
 	Container, getKeybindings, CURSOR_MARKER } = await import(pathToFileURL(path.join(hostRoot,
 	"@earendil-works/pi-tui/dist/index.js")));
 const context = {
@@ -174,15 +174,18 @@ function contrastRatio(a, b) {
 test("all status-block foregrounds and backgrounds share muted saturation with readable contrast", () => {
 	for (const dark of [true, false]) {
 		const palette = getRainbowBlockPalette(dark);
+		const statusPairs = [
+			[palette.fgStatusReady, palette.bgStatusReady], [palette.fgStatusRun, palette.bgStatusRun],
+			[palette.fgStatusErr, palette.bgStatusErr], [palette.fgStatusStp, palette.bgStatusStp],
+		];
+		for (const [fg, bg] of statusPairs) assert.ok(contrastRatio(fg, bg) >= 4.5, "Status contrast must remain readable");
 		const pairs = [
-			["status idle", palette.fgStatusReady, palette.bgStatusReady], ["status running", palette.fgStatusRun, palette.bgStatusRun],
-			["status error", palette.fgStatusErr, palette.bgStatusErr], ["status stopped", palette.fgStatusStp, palette.bgStatusStp],
 			["project", palette.fgProject, palette.bgProjBranch], ["branch", palette.fgBranch, palette.bgProjBranch],
 			["token in", palette.fgTokenIn, palette.bgTelemetry], ["token out", palette.fgTokenOut, palette.bgTelemetry], ["cost", palette.fgCost, palette.bgTelemetry],
 			["context", palette.ctxText, palette.bgCtx], ["bracket", palette.bracketColor, palette.bgModelThink],
 		];
 		for (const [name, fg, bg] of pairs) {
-			assert.ok(saturation(fg) <= 0.52, `${dark ? "dark" : "light"} ${name} saturation too high: ${saturation(fg)}`);
+			assert.ok(colorToOklch(fg).c <= 0.051, `${dark ? "dark" : "light"} ${name} chroma too high: ${colorToOklch(fg).c}`);
 			assert.ok(contrastRatio(fg, bg) >= 4.5, `${dark ? "dark" : "light"} ${name} contrast too low: ${contrastRatio(fg, bg)}`);
 		}
 	}

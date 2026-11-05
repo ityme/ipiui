@@ -93,6 +93,7 @@ function rainbowChars(graphemes: string[], timeMs = 0): { ch: string; col: Color
 
 function softenPalette<T extends Record<string, Color>>(palette: T): T {
 	for (const [key, color] of Object.entries(palette)) {
+		if (/^(fg|bg)Status/.test(key)) continue;
 		palette[key as keyof T] = softenColor(color) as T[keyof T];
 	}
 	const pairs = [
@@ -125,7 +126,8 @@ function ensureTextContrast(foreground: Color, background: Color): Color {
 		return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 	};
 	if (ratio(foreground, background) >= 4.5) return foreground;
-	const { l, c, h } = colorToOklch(foreground);
+	const { l, h } = colorToOklch(foreground);
+	const c = Math.min(colorToOklch(foreground).c, MAX_PALETTE_CHROMA);
 	const goLighter = colorLuminance(background) < 0.5;
 	let low = goLighter ? l : 0;
 	let high = goLighter ? 1 : l;

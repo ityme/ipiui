@@ -52,7 +52,7 @@ The row appears above Pi's native editor. It retains the native prompt, completi
 4. Input/output tokens and estimated cost. The cost number is Pi's estimate; the displayed `¥` is a requested label, not currency conversion.
 5. Context usage bar, percentage and token limit.
 
-The three model/usage/context blocks share one animated rainbow band, uniformly desaturated using a shared OKLCH chroma cap across the full palette, including status, project, telemetry, context and rainbow colors. Foreground lightness is adjusted only when needed to preserve WCAG AA text contrast in dark and light appearances. Project and branch remain a separate semantic-color block. When the terminal is too narrow, blocks are hidden by priority rather than forcing horizontal overflow.
+The three model/usage/context blocks share one animated rainbow band, muted with one shared OKLCH chroma cap across the rainbow, project/branch, model, telemetry and context colors; semantic status colors remain vivid, while idle stays neutral gray. Foreground lightness is adjusted only when needed to preserve WCAG AA text contrast in dark and light appearances. Project and branch remain a separate semantic-color block. When the terminal is too narrow, blocks are hidden by priority rather than forcing horizontal overflow.
 
 ## Commands
 
@@ -60,7 +60,7 @@ Run `/ipiui` to open the interactive settings panel. Use the arrow keys to choos
 
 The panel lets you:
 
-- Show or hide the status row.
+- Show or hide the status row (for example, `Hide status row(隐藏状态栏)`).
 - Set a custom pane name or reset it to the project directory name.
 - Enable/disable title synchronization or switch groups.
 - View help.
