@@ -66,7 +66,7 @@ const RAW_RAINBOW = [
 	rgbColor(60, 200, 245),  // sky/cyan
 	rgbColor(140, 150, 250), // blue/indigo
 	rgbColor(215, 130, 240), // purple/violet
-];
+].map(color => mixColors(color, rgbColor(184, 184, 184), 0.16, "srgb"));
 
 const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
@@ -300,14 +300,12 @@ export class TopStatusBarComponent implements Component {
 		const m4RawText = `[⬆️${shortCount(usage.input)} ⬇️${shortCount(usage.output)} 💰 ${usage.cost.toFixed(2)}¥]`;
 		const m5RawText = `[CTX ${"━".repeat(ctxFilled)}${"─".repeat(ctxEmpty)} ${ctxPercent}% ${shortCount(ctxTokens)}/${shortContextWindow(ctxWindow)}]`;
 
-		// 左右组装：
-		// 左侧: 模块 1 (状态)
-		const leftStr = m1Pill;
-		const leftVis = m1Vis;
+		// Reserve the status block; shorten the project first on narrow terminals.
+		const projectWidth = Math.min(m2Vis, Math.max(0, width - m1Vis - 1));
+		const leftStr = projectWidth > 0 ? `${truncateToWidth(m2Pill, projectWidth)} ${m1Pill}` : m1Pill;
+		const leftVis = m1Vis + (projectWidth > 0 ? projectWidth + 1 : 0);
 
-		// 右侧: 模块 2 (项目分支) + 模块 3 (模型彩虹思考) + 模块 4 (遥测) + 模块 5 (CTX)
 		const rightItems: { id: string; pill: string; vis: number; priority: number; bg?: Color }[] = [
-			{ id: "proj_branch", pill: m2Pill, vis: m2Vis, priority: 4 },
 			{ id: "model_think", pill: m3RawText, vis: visibleWidth(m3RawText), priority: 3, bg: p.bgModelThink },
 			{ id: "telemetry", pill: m4RawText, vis: visibleWidth(m4RawText), priority: 2, bg: p.bgTelemetry },
 			{ id: "ctx", pill: m5RawText, vis: visibleWidth(m5RawText), priority: 1, bg: p.bgCtx },
@@ -323,7 +321,7 @@ export class TopStatusBarComponent implements Component {
 			}
 		}
 
-		// 右侧保持严格视觉顺序：模块 2 -> 模块 3 -> 模块 4 -> 模块 5
+		// Right-side order: model/thinking, usage, context.
 		const visibleItems = rightItems.filter(item => activeSet.has(item.id));
 		// Build one color band across all visible telemetry blocks, including brackets and gaps.
 		const rainbowItems = visibleItems.filter(item => item.bg !== undefined);
@@ -349,7 +347,7 @@ export class TopStatusBarComponent implements Component {
 		const totalVis = leftVis + (activeSet.size > 0 ? rightVis : 0);
 
 		if (totalVis >= width) {
-			return [truncateToWidth(`${leftStr} ${orderedRight}`, width)];
+			return [truncateToWidth(orderedRight ? `${leftStr} ${orderedRight}` : leftStr, width)];
 		}
 
 		// 中间自适应空格留白
@@ -571,6 +569,39 @@ export default function (pi: ExtensionAPI) {
 		bar = null;
 		tuiInstance = null;
 	});
+	const showPanel = async (ctx: ExtensionContext) => {
+		while (true) {
+			const choices = [
+				`${state.visible ? "隐藏" : "显示"}状态栏（当前${state.visible ? "显示" : "隐藏"}）`,
+				`窗格名称：${paneLabel}${customPaneLabel ? "（自定义）" : "（跟随项目）"}`,
+				`标题同步：${groupName ? `已开启 · ${groupName}` : "已关闭"}`,
+				"使用说明与快捷命令",
+			];
+			const choice = await ctx.ui.select("ipiui · ↑↓ 选择 / Enter 确定 / Esc 关闭", choices);
+			if (!choice) return;
+			if (choice === choices[0]) {
+				await handleCommand("toggle", ctx);
+			} else if (choice === choices[1]) {
+				const action = await ctx.ui.select(`窗格名称 · ${paneLabel}`, ["设置自定义名称", "恢复项目目录名"]);
+				if (action === "恢复项目目录名") await handleCommand("name reset", ctx);
+				if (action === "设置自定义名称") {
+					const name = await ctx.ui.input("窗格名称 · 最多 20 个字符，Esc 取消", paneLabel);
+					if (name?.trim()) await handleCommand(`name ${name}`, ctx);
+				}
+			} else if (choice === choices[2]) {
+				const actions = [groupName ? "关闭标题同步" : "开启标题同步", "切换分组", "加入默认分组"];
+				const action = await ctx.ui.select("同组窗格共享标题，不同窗口需使用不同组名", actions);
+				if (action === actions[0]) await handleCommand(`group ${groupName ? "off" : defaultGroupName}`, ctx);
+				if (action === actions[2]) await handleCommand(`group ${defaultGroupName}`, ctx);
+				if (action === actions[1]) {
+					const group = await ctx.ui.input("组名 · 最多 64 个字符；同组共享标题", groupName ?? defaultGroupName);
+					if (group?.trim()) await handleCommand(`group ${group}`, ctx);
+				}
+			} else if (choice === choices[3]) {
+				await handleCommand("help", ctx);
+			}
+		}
+	};
 	const handleCommand = async (args: string, ctx: ExtensionContext) => {
 		if (ctx.mode !== "tui") return;
 		sync(ctx);
@@ -578,11 +609,15 @@ export default function (pi: ExtensionAPI) {
 		const subCmd = sub.toLowerCase();
 		const param = remainder.trim();
 
-		if (!subCmd || subCmd === "help") {
+		if (!subCmd || subCmd === "menu") {
+			await showPanel(ctx);
+			return;
+		}
+		if (subCmd === "help") {
 			ctx.ui.notify(
-				`ipiui commands:\n` +
+				`ipiui · /ipiui 打开面板；↑↓ 选择、Enter 确定、Esc 返回\n` +
 				`  /ipiui [on|off|toggle]  - 状态栏显隐开关 (当前: ${state.visible ? "ON" : "OFF"})\n` +
-				`  /ipiui name [NAME]      - 设置当前窗格名称 (当前: ${paneLabel})\n` +
+				`  /ipiui name [NAME]      - 设置窗格名称；name reset 跟随项目 (当前: ${paneLabel})\n` +
 				`  /ipiui group [NAME|off] - 设置标题分组 (当前: ${groupName ?? "off"})\n` +
 				`  /ipiui status           - 查看当前状态信息`,
 				"info"
@@ -602,8 +637,13 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify(`Title name: ${paneLabel}; use /ipiui name NAME`, "info");
 				return;
 			}
-			paneLabel = cleanTitleLabel(param);
-			customPaneLabel = true;
+			if (param === "reset") {
+				customPaneLabel = false;
+				sync(ctx);
+			} else {
+				paneLabel = cleanTitleLabel(param);
+				customPaneLabel = true;
+			}
 			publishTitle();
 			ctx.ui.notify(`Title name: ${paneLabel}`, "info");
 			return;
@@ -648,7 +688,12 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.notify(`Unknown subcommand: ${subCmd}. Use /ipiui for help`, "warning");
 	};
 	pi.registerCommand("ipiui", {
-		description: "Configure ipiui status bar and pane title (/ipiui [on|off|name|group|status])",
+		description: "打开 ipiui 设置面板，或使用 on/off/name/group/status/help",
+		getArgumentCompletions: prefix => {
+			const commands = ["menu", "on", "off", "toggle", "name", "name reset", "group", "group all", "group off", "status", "help"];
+			const matches = commands.filter(value => value.startsWith(prefix)).map(value => ({ value, label: `/ipiui ${value}` }));
+			return matches.length ? matches : null;
+		},
 		handler: handleCommand,
 	});
 	pi.registerCommand("topbar", {

@@ -105,13 +105,22 @@ test("model, usage and CTX share one animated rainbow band including brackets", 
 	} finally { Date.now = originalNow; }
 });
 
+test("long project labels preserve status and terminal width", () => {
+	const component = new TopStatusBarComponent({ status: "idle", visible: true, cwd: "I:/" + "项目".repeat(100), gitBranch: "feature-long" }, getThemeByName("dark"), context);
+	for (const width of [20, 40, 80, 200]) {
+		const line = component.render(width)[0];
+		assert.equal(visibleWidth(line), width);
+		assert.ok(plain(line).includes("[⠿ idle]"));
+	}
+});
+
 test("information order, unknown context, cumulative totals, branch and path", () => {
 	const splitComp = new TopStatusBarComponent({ status: "idle", visible: true, style: "rainbow_blocks",
 		modelId: "relay/gemini3.8flash", thinkingLevel: "high", gitBranch: "dev", cwd: "I:/ispace/ipiui",
 		usage: { input: 1200, output: 300, total: 2500, cost: 0.123 },
 	}, getThemeByName("dark"), context);
 	const splitLine = plain(splitComp.render(200)[0]);
-	const splitFields = ["[⠿ idle", "[📁 ipiui dev]", "[🤖 gemini3.8flash · high]", "[⬆️1.2k ⬇️300 💰 0.12¥]", "[CTX"];
+	const splitFields = ["[📁 ipiui dev]", "[⠿ idle", "[🤖 gemini3.8flash · high]", "[⬆️1.2k ⬇️300 💰 0.12¥]", "[CTX"];
 	let splitPos = -1;
 	for (const f of splitFields) {
 		const next = splitLine.indexOf(f);
@@ -266,7 +275,7 @@ test("preview-width split layout keeps model, thinking, telemetry and CTX pills 
 	});
 	const line = plain(component.render(140)[0]);
 	assert.equal(visibleWidth(line), 140);
-	const splitFields = ["running", "ipiui", "dev", "gemini-3.8-flash", "medium", "⬆️35.2M", "⬇️225.0k", "💰 37.99¥", "CTX"];
+	const splitFields = ["ipiui", "dev", "running", "gemini-3.8-flash", "medium", "⬆️35.2M", "⬇️225.0k", "💰 37.99¥", "CTX"];
 	let position = -1;
 	for (const field of splitFields) {
 		const next = line.indexOf(field);
@@ -426,11 +435,18 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 	process.env.IPIUI_TEST_GROUP_ROOT = root;
 	process.env.IPIUI_GROUP = "review";
 	const handlers = new Map(), commands = new Map(), titles = [], notices = [];
+	const selections = [], answers = [], prompts = [];
 	let renderRequests = 0;
 	const ctx = {
 		...context, mode: "tui", isIdle: () => true,
 		sessionManager: { getEntries: () => [] },
 		ui: { setTitle: title => titles.push(title), notify: text => notices.push(text),
+			select: async (title, choices) => {
+				prompts.push({ title, choices });
+				const selected = selections.shift();
+				return typeof selected === "number" ? choices[selected] : selected;
+			},
+			input: async () => answers.shift(),
 			setWorkingVisible() {}, setFooter() {},
 			setWidget(_key, factory) {
 				factory({ requestRender: () => { renderRequests++; } }, getThemeByName("dark"));
@@ -475,6 +491,25 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 		await commands.get("tabgroup").handler("review", ctx);
 		await command("status");
 		assert.match(notices.at(-1), /Title group: review/);
+		selections.push(0, undefined);
+		await command("");
+		assert.ok(prompts[0].choices[0].includes("隐藏状态栏"));
+		assert.ok(prompts[1].choices[0].includes("显示状态栏"));
+		await command("on");
+		selections.push(1, 0, undefined);
+		answers.push("panel-name");
+		await command("menu");
+		await command("name");
+		assert.match(notices.at(-1), /panel-name/);
+		selections.push(1, 1, undefined);
+		await command("");
+		await command("name");
+		assert.match(notices.at(-1), /ipiui/);
+		selections.push(2, 1, undefined);
+		answers.push(undefined);
+		await command("");
+		await command("group");
+		assert.match(notices.at(-1), /review/);
 		await command("group bad" + String.fromCharCode(10) + "name");
 		assert.match(notices.at(-1), /no control characters/);
 		await emit("agent_start");

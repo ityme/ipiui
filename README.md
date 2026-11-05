@@ -5,7 +5,7 @@ A status row **above Pi's native prompt editor**, with bracketed color blocks an
 ```text
 Chat messages…
 
-[⠿ idle 10s]  [📁 ipiui dev] [🤖 gemini-3.8-flash · high] [⬆️15.0M ⬇️167.0k 💰 21.12¥] [CTX ━─────── 2% 15.6k/1M]
+[📁 ipiui dev] [⠿ idle 10s]  [🤖 gemini-3.8-flash · high] [⬆️15.0M ⬇️167.0k 💰 21.12¥] [CTX ━─────── 2% 15.6k/1M]
 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Your prompt
 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -15,7 +15,7 @@ Your prompt
 
 ## Status row
 
-The status block sits on the left; project/branch, model/thinking, usage and context blocks sit on the right. Blocks that do not fit are hidden by priority. The gallery contains design previews; runtime style switching is not implemented.
+Project/branch and status sit together on the left, in that order; model/thinking, usage and context blocks sit on the right. Long project labels shorten first to preserve the status block. Blocks that do not fit are hidden by priority. The gallery contains design previews; runtime style switching is not implemented.
 
 Information order:
 
@@ -24,7 +24,7 @@ Information order:
 3. 模型与思考等级共用一个模块：`[🤖 gemini-3.8-flash · high]`，`med` 显示为 `medium`。
 4. Token 显示为 `⬆️ 15.0M ⬇️ 167k`。不再显示难以理解的 `Σ` 总量。
 5. 费用使用 `💰 21.12¥` 格式；Pi 的累计费用本身仍以美元估算数值显示，只是按要求使用 `¥` 外观标记，并不进行货币汇率转换。
-6. CTX 胶囊包含字符进度条、百分比和已用/上限。模型、Token/费用和 CTX 三个模块的全部文字（包括括号）共享连续的动态彩虹色带；保留各模块背景色，CTX 不再使用固定压力色。
+6. CTX 胶囊包含字符进度条、百分比和已用/上限。模型、Token/费用和 CTX 三个模块的全部文字（包括括号）共享连续的动态彩虹色带；保留各模块背景色，CTX 不再使用固定压力色。彩虹色与中性灰混合 16%，轻降饱和度，保持原有色序和动画速度。
 7. 五个模块分别以 `[]` 包裹，模块之间使用空格分隔。
 
 Totals follow Pi's footer accounting across all session entries, including usage entries, tools, compaction and branch summaries. They are not restricted to the latest response or the post-compaction context.
@@ -71,11 +71,14 @@ This extension restores the native editor and hides the footer. Disable competin
 
 Unified `/ipiui` commands (with backward-compatible aliases `/topbar`, `/tabname`, `/tabgroup`):
 
-- `/ipiui` or `/ipiui help` — display help information.
+- `/ipiui` or `/ipiui menu` — open the native settings panel. Use ↑/↓ to select, Enter to confirm and Esc to go back/close. Actions return to the panel with updated values.
+- `/ipiui help` — display shortcut commands.
 - `/ipiui [on|off|toggle]` — toggle top status row visibility.
-- `/ipiui name [NAME]` — view or set this pane's short title label.
+- `/ipiui name [NAME]` — view or set this pane's short title label; `/ipiui name reset` restores the project directory name.
 - `/ipiui group [NAME|off]` — view, switch, or disable title synchronization group.
 - `/ipiui status` — display current configuration overview.
+
+The panel shows current status row visibility, pane name and title group. It supports renaming, restoring the directory name, changing groups, and turning title synchronization off/on. Empty or cancelled inputs leave the setting unchanged. Command arguments have Tab completion. Settings apply to this running instance; they are not written to global configuration.
 
 ## Windows Terminal split-pane titles
 
