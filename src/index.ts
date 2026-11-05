@@ -59,7 +59,7 @@ const BRAILLE_SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧",
 
 const DARK_CANVAS = rgbColor(9, 11, 16);
 const LIGHT_CANVAS = rgbColor(248, 250, 252);
-const MAX_PALETTE_CHROMA = 0.05;
+const MAX_PALETTE_CHROMA = 0.08;
 
 function softenColor(color: Color): Color {
 	const { l, c, h } = colorToOklch(color);
@@ -343,13 +343,9 @@ export class TopStatusBarComponent implements Component {
 		const m1Pill = `${m1BracketOpen}${m1Content}${m1BracketClose}`;
 		const m1Vis = 1 + visibleWidth(statusPadded) + 1;
 
-		// 模块 2: [📁 ipiui(黄色) dev(青色)] (同模块同背景色)
-		const m2BracketOpen = this.theme.style("[", { fg: p.bracketColor, bg: p.bgProjBranch, bold: true });
-		const m2BracketClose = this.theme.style("]", { fg: p.bracketColor, bg: p.bgProjBranch, bold: true });
-		const m2Proj = this.theme.style(`📁 ${cwdBasename}`, { fg: p.fgProject, bg: p.bgProjBranch, bold: true });
-		const m2Branch = this.theme.style(`${branch}`, { fg: p.fgBranch, bg: p.bgProjBranch, bold: true });
-		const m2Pill = `${m2BracketOpen}${m2Proj} ${m2Branch}${m2BracketClose}`;
-		const m2Vis = 1 + visibleWidth(`📁 ${cwdBasename}`) + 1 + visibleWidth(`${branch}`) + 1;
+		// Project and branch join the same continuous animated rainbow band as telemetry.
+		const m2RawText = `[📁 ${cwdBasename} ${branch}]`;
+		const m2Vis = visibleWidth(m2RawText);
 
 		const rawThink = (st.thinkingLevel ?? "med").toLowerCase();
 		const thinkFull = rawThink === "med" ? "medium" : rawThink;
@@ -362,7 +358,7 @@ export class TopStatusBarComponent implements Component {
 		const leftVis = m1Vis;
 
 		const rightItems: { id: string; pill: string; vis: number; priority: number; bg?: Color }[] = [
-			{ id: "proj_branch", pill: m2Pill, vis: m2Vis, priority: 4 },
+			{ id: "proj_branch", pill: m2RawText, vis: m2Vis, priority: 4, bg: p.bgProjBranch },
 			{ id: "model_think", pill: m3RawText, vis: visibleWidth(m3RawText), priority: 3, bg: p.bgModelThink },
 			{ id: "telemetry", pill: m4RawText, vis: visibleWidth(m4RawText), priority: 2, bg: p.bgTelemetry },
 			{ id: "ctx", pill: m5RawText, vis: visibleWidth(m5RawText), priority: 1, bg: p.bgCtx },

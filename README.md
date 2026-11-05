@@ -52,7 +52,7 @@ The row appears above Pi's native editor. It retains the native prompt, completi
 4. Input/output tokens and estimated cost. The cost number is Pi's estimate; the displayed `¥` is a requested label, not currency conversion.
 5. Context usage bar, percentage and token limit.
 
-The three model/usage/context blocks share one animated rainbow band, muted with one shared OKLCH chroma cap across the rainbow, project/branch, model, telemetry and context colors; semantic status colors remain vivid, while idle stays neutral gray. Foreground lightness is adjusted only when needed to preserve WCAG AA text contrast in dark and light appearances. Project and branch remain a separate semantic-color block. When the terminal is too narrow, blocks are hidden by priority rather than forcing horizontal overflow.
+The project/branch, model, usage and context blocks share one continuous animated rainbow band. Their common OKLCH chroma cap is 0.08, keeping more color than the previous muted palette without returning to the original neon saturation. Semantic status colors remain vivid, while idle stays neutral gray. Foreground lightness is adjusted only when needed to preserve WCAG AA text contrast in dark and light appearances. When the terminal is too narrow, blocks are hidden by priority rather than forcing horizontal overflow.
 
 ## Commands
 

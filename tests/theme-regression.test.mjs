@@ -79,7 +79,7 @@ test("running icon animates with braille rotation", () => {
 	}
 });
 
-test("model, usage and CTX share one animated rainbow band including brackets", () => {
+test("project, model, usage and CTX share one animated rainbow band including brackets", () => {
 	const originalNow = Date.now;
 	const styled = [];
 	const baseTheme = getThemeByName("dark");
@@ -88,12 +88,12 @@ test("model, usage and CTX share one animated rainbow band including brackets", 
 	const component = new TopStatusBarComponent({ status: "idle", visible: true, style: "rainbow_blocks",
 		modelId: "gpt-6.1-sol", thinkingLevel: "high", usage: { input: 17900000, output: 115900, total: 0, cost: 22.52 },
 	}, theme, context);
-	const expected = "[🤖 gpt-6.1-sol · high] [⬆️17.9M ⬇️115.9k 💰 22.52¥] [CTX ━━────── 19% 24.5k/128.0k]";
+	const expected = "[📁 ipiui dev] [🤖 gpt-6.1-sol · high] [⬆️17.9M ⬇️115.9k 💰 22.52¥] [CTX ━━────── 19% 24.5k/128.0k]";
 	try {
 		Date.now = () => 100_000;
 		const line = component.render(220)[0];
 		assert.ok(plain(line).includes(expected));
-		const band = styled.slice(styled.findIndex((item, i) => item.text === "[" && styled[i + 1]?.text === "🤖"));
+		const band = styled.slice(styled.findIndex((item, i) => item.text === "[" && styled[i + 1]?.text === "📁"));
 		assert.equal(band.map(item => item.text).join(""), expected.replaceAll("] [", "]["));
 		const firstColors = band.map(item => item.fg);
 		assert.ok(new Set(firstColors.map(JSON.stringify)).size > 12);
@@ -102,6 +102,8 @@ test("model, usage and CTX share one animated rainbow band including brackets", 
 		component.render(220);
 		const second = styled.slice(-band.length).map(item => item.fg);
 		assert.notDeepEqual(second, firstColors);
+		const projectLength = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment("[📁 ipiui dev]")].length;
+		assert.notDeepEqual(second.slice(0, projectLength), firstColors.slice(0, projectLength), "Project and branch colors must animate too");
 	} finally { Date.now = originalNow; }
 });
 
@@ -185,7 +187,7 @@ test("all status-block foregrounds and backgrounds share muted saturation with r
 			["context", palette.ctxText, palette.bgCtx], ["bracket", palette.bracketColor, palette.bgModelThink],
 		];
 		for (const [name, fg, bg] of pairs) {
-			assert.ok(colorToOklch(fg).c <= 0.051, `${dark ? "dark" : "light"} ${name} chroma too high: ${colorToOklch(fg).c}`);
+			assert.ok(colorToOklch(fg).c <= 0.081, `${dark ? "dark" : "light"} ${name} chroma too high: ${colorToOklch(fg).c}`);
 			assert.ok(contrastRatio(fg, bg) >= 4.5, `${dark ? "dark" : "light"} ${name} contrast too low: ${contrastRatio(fg, bg)}`);
 		}
 	}
