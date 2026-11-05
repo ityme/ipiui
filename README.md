@@ -1,11 +1,11 @@
 # ipiui — Pi status row and split-pane titles
 
-A refined information row **above Pi's native prompt editor**, featuring **discrete semantic color pills** (or transparent classic text), with no footer below the editor. Works in Pi's regular terminal mode without overlays.
+A status row **above Pi's native prompt editor**, with bracketed color blocks and no footer below the editor. Works in Pi's regular terminal mode without overlays.
 
 ```text
 Chat messages…
 
- ⠿ RDY 0s ●   📁 ipiui    dev   🤖 gemini-3.8-flash   ✦ high   ⬆️ 15.0M  ⬇️ 167k  💰 21.12¥   CTX ━━━━──── 2% 15.6k/1M
+[⠿ idle 10s]  [📁 ipiui dev] [🤖 gemini-3.8-flash · high] [⬆️15.0M ⬇️167.0k 💰 21.12¥] [CTX ━─────── 2% 15.6k/1M]
 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Your prompt
 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -13,69 +13,93 @@ Your prompt
 
 [View the styles gallery](docs/styles-gallery.html).
 
-## Display Styles
+## Status row
 
-Switch styles anytime with `/topbar style [split|pills|classic|border]`:
-
-- **`split` (Default · Option A)**: Modern dual-split statusline inspired by [agent_statusline_preview.html]. Left side anchors primary identity (animated status icon, project folder, git branch); right side displays telemetry (model, color-coded thinking level, tokens, cost, ctx).
-- **`pills` (Option 4)**: Sequential discrete micro-pills with 20% tinted backgrounds and semantic foreground colors. Trailing border line cleanly fills the rest of the window.
-- **`classic` (Option 1)**: Pure transparent background with clean colored text blocks separated by dots (`──── ✓ · gemini-3.8-flash · ✦ high · ... ────`).
-- **`border` (Option 2)**: Pure transparent background with a dynamic status-colored indicator bar on the left edge (`▌ ✓ · ... ────`).
+The status block sits on the left; project/branch, model/thinking, usage and context blocks sit on the right. Blocks that do not fit are hidden by priority. The gallery contains design previews; runtime style switching is not implemented.
 
 Information order:
 
-1. 状态徽章固定宽度（**⠿ RDY 0s ●**）并显示符号与文字之间的空格：空闲为 `⠿ RDY 0s ●`、运行中为 `⠋ RUN 6s ●`、错误为 `✗ ERR 4s ●`、停止为 `■ STP 2s ●`。状态码统一三个字符，耗时一律使用 `s`，切换状态时胶囊宽度保持不变。
+1. 状态徽章按内容宽度显示：`[⠿ idle 10s]`、`[⠋ running 6s]`、`[✗ error 4s]`、`[■ aborted 2s]`。idle 为灰色，running 为绿色；耗时按天、时、分、秒显示，不补尾部空格，无耗时隐藏时间。名称来自扩展对 Pi 生命周期事件的映射；Pi 没有直接提供统一的状态标签 API。
 2. 项目名和 Git 分支：`📁 ipiui`、` dev`。
 3. 模型与思考等级共用一个模块：`[🤖 gemini-3.8-flash · high]`，`med` 显示为 `medium`。
 4. Token 显示为 `⬆️ 15.0M ⬇️ 167k`。不再显示难以理解的 `Σ` 总量。
 5. 费用使用 `💰 21.12¥` 格式；Pi 的累计费用本身仍以美元估算数值显示，只是按要求使用 `¥` 外观标记，并不进行货币汇率转换。
 6. CTX 胶囊包含字符进度条、百分比和已用/上限。模型、Token/费用和 CTX 三个模块的全部文字（包括括号）共享连续的动态彩虹色带；保留各模块背景色，CTX 不再使用固定压力色。
-7. 状态与数据块使用相邻空格分隔，不加入括号、竖线等额外分隔符。
+7. 五个模块分别以 `[]` 包裹，模块之间使用空格分隔。
 
 Totals follow Pi's footer accounting across all session entries, including usage entries, tools, compaction and branch summaries. They are not restricted to the latest response or the post-compaction context.
 
 Pi retains ownership of editing, completion, paste, interrupt, shortcuts, IME markers and mouse coordinates. Completion menus still appear temporarily below the input border when active; the idle footer is empty.
 
-## Try it
+## Install
+
+Requires Pi 1.5.0 (tested) and Node.js 22.19 or newer. Pi loads the TypeScript entry directly; no build step or runtime dependency installation is needed for a local checkout.
+
+Install a local checkout now:
+
+```bash
+pi install I:/ispace/ipiui
+```
+
+For project-only installation, run `pi install ./path/to/ipiui --local` from the target project. Relative package paths resolve from the settings file. A local installation loads the checkout in place, so keep that directory available.
+
+After these changes are pushed to the GitHub repository, install from Git:
+
+```bash
+pi install git:github.com/ityme/ipiui
+```
+
+After the package is published to npm, the npm installation command is:
+
+```bash
+pi install npm:ipiui
+```
+
+The Git and npm commands require the corresponding remote package to be available; creating a local release archive does not publish it. Use `pi list` to inspect installed packages. To remove a local installation, run `pi remove I:/ispace/ipiui`; for Git or npm, pass the same source used to install it.
+
+Restart Pi or run `/reload` after installation. `/ipiui` shows help. To try the checkout for one invocation without saving settings:
 
 ```bash
 pi -e I:/ispace/ipiui
 ```
 
-For an existing session started with this extension, run `/reload` after updates.
+If you previously added this directory to the `extensions` array manually, remove that duplicate entry when switching to `pi install`.
 
-For permanent installation, add the path to the existing `extensions` array in your Pi settings, preserving other entries:
-
-```json
-{
-  "extensions": ["I:/ispace/ipiui"]
-}
-```
-
-This extension restores the native editor and hides the footer. Disable competing editor/footer extensions such as `pi-powerline-footer`. It does not change your global configuration automatically or remove widgets owned by unrelated extensions.
+This extension restores the native editor and hides the footer. Disable competing editor/footer extensions such as `pi-powerline-footer`. Only `pi install` modifies package settings; the extension itself does not edit global configuration or remove widgets owned by unrelated extensions.
 
 ## Commands
 
-- `/topbar` or `/topbar toggle` — toggle status row visibility.
-- `/topbar on` / `/topbar off` — show or hide status row.
-- `/topbar split` — switch to dual-split layout (Default · Option A).
-- `/topbar pills` — switch to discrete micro-pills (Option 4).
-- `/topbar classic` — switch to pure transparent colored text (Option 1).
-- `/topbar border` — switch to pure transparent with left accent indicator (Option 2).
+Unified `/ipiui` commands (with backward-compatible aliases `/topbar`, `/tabname`, `/tabgroup`):
+
+- `/ipiui` or `/ipiui help` — display help information.
+- `/ipiui [on|off|toggle]` — toggle top status row visibility.
+- `/ipiui name [NAME]` — view or set this pane's short title label.
+- `/ipiui group [NAME|off]` — view, switch, or disable title synchronization group.
+- `/ipiui status` — display current configuration overview.
 
 ## Windows Terminal split-pane titles
 
-All Pi instances **automatically join a shared title group (`all`) on startup**. No commands are required.
+All Pi instances **automatically join a shared title group (`all`) on startup**. Set `IPIUI_GROUP` before starting Pi to override it. This default group spans terminal windows; automatic per-window isolation is not implemented. `WT_SESSION` identifies a pane connection, so it cannot group all panes in one window.
+
+Use the same `/ipiui group NAME` in panes that should share titles and a different name in other windows. New panes need the same group name or `IPIUI_GROUP` setting; environment changes in an existing pane are not guaranteed to propagate to newly split panes.
 
 When running multiple split panes in Windows Terminal, each pane publishes a compact combined title:
 
 ```text
-[1▶api 2✓web 3○cmd]
+⠋api ┃ web ┃ ipiui
 ```
 
-- `/tabname NAME` — change this pane's short label from `cmd` to `NAME`.
-- `/tabgroup NAME` — isolate this pane into a custom group.
-- `/tabgroup off` — disable title management and restore to `pi`.
+- `/ipiui name NAME` — change this pane's short label from the project directory name to `NAME`.
+- `/ipiui group NAME` — isolate this pane into a custom group.
+- `/ipiui group off` — disable title management and restore to `pi`.
+
+Only running members show a braille spinner; finished/idle members show their label alone. Every member animates cached peer records at 100ms intervals while any member is running; disk synchronization runs once per second. Animation frames do not read or write files. Unchanged titles are not republished by animation/sync callbacks; a separate 1.5s heartbeat reasserts the title when Pi overwrites it. Status animation skips redraw requests while the row is hidden, and fixed palettes and visible rainbow-block text segmentation are cached. Cross-process state uses per-member temporary JSON files with atomic replacement; shutdown removes only that member's files. All timers stop on shutdown or group opt-out.
+
+Windows Terminal titles are plain text: individual project labels cannot use the status row's ANSI colors. No title color escape sequences are emitted.
+
+## License
+
+GNU General Public License v3.0 only (`GPL-3.0-only`). See [LICENSE](LICENSE).
 
 ## Development and checks
 
@@ -84,6 +108,11 @@ Tested against Pi 1.5.0.
 ```bash
 npm run check
 npm test
+npm run check:package
 ```
 
-Tests cover three real themes, truecolor/256-color contrast, CJK/emoji rendering, usage accounting, field order, regular-mode placement without overlays, empty footer, branch updates, parallel tools, lifecycle/cleanup, native prompt without an added `>`, wrapping, IME markers, mouse placement, paste, completion and shortcuts. Title tests cover independent Node processes, command/event integration, completion/error status, group isolation, label sanitization, stale peers, cleanup and opt-out.
+`check:package` runs `npm pack`, extracts the artifact, installs it with the real Pi CLI into an isolated configuration directory, and verifies Pi discovers and loads the packaged extension. It does not use your global settings or call a model. If Pi is installed outside the standard location, set `PI_TEST_HOST_ROOT` to its `node_modules` directory.
+
+Create a release archive with `npm pack --pack-destination dist` (create `dist` first). The tarball contains only the extension source, package metadata, license, changelog, README and HTML gallery. To install an archive locally, extract it and run `pi install /absolute/path/to/extracted/package`; a raw `.tgz` path is not a Pi local extension directory.
+
+Tests cover three real themes, terminal width handling, CJK/emoji rendering, usage accounting, field order, regular-mode placement without overlays, empty footer, branch updates, parallel tools, lifecycle/cleanup, native prompt without an added `>`, wrapping, IME markers, mouse placement, paste, completion and shortcuts. Title tests cover independent Node processes, command/event integration, completion/error status, group isolation, label sanitization, stale peers, cleanup and opt-out.

@@ -1,7 +1,7 @@
 {
   "name": "ipiui",
   "version": "0.1.0",
-  "description": "Pi rainbow status row and opt-in split-pane title aggregation",
+  "description": "Pi extension for a compact status row and shared terminal pane titles",
   "type": "module",
   "main": "index.ts",
   "keywords": [
@@ -15,7 +15,8 @@
   },
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "check": "node scripts/check.mjs"
+    "check": "node scripts/check.mjs",
+    "check:package": "node scripts/check-package.mjs"
   },
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "*",
@@ -27,5 +28,24 @@
   "devDependencies": {
     "typescript": "^5.0.0"
   },
-  "license": "MIT"
+  "license": "GPL-3.0-only",
+  "files": [
+    "index.ts",
+    "src/**/*.ts",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "docs/styles-gallery.html"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ityme/ipiui.git"
+  },
+  "homepage": "https://github.com/ityme/ipiui#readme",
+  "bugs": {
+    "url": "https://github.com/ityme/ipiui/issues"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
 }

@@ -27,6 +27,7 @@ const jiti = createJiti(path.join(projectRoot, "index.ts"), {
 	},
 });
 const { default: extension, TopStatusBarComponent, collectUsage } = jiti(path.join(projectRoot, "index.ts"));
+const { TabTitleGroup, tabGroupDirectory } = jiti(path.join(projectRoot, "src/tab-title.ts"));
 const { getThemeByName, loadThemeFromPath } = await import(pathToFileURL(path.join(hostRoot,
 	"@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js")));
 const { visibleWidth, stripTerminalSequences, colorToRgb, indexedColor, TuiMainScreen,
@@ -42,7 +43,7 @@ for (const themeName of ["dark", "light", "system"]) {
 	const theme = getThemeByName(themeName);
 	assert.ok(theme);
 	for (const [status, symbol] of [
-		["idle", "RDY"], ["running", "RUN"], ["error", "ERR"], ["aborted", "STP"],
+		["idle", "idle"], ["running", "running"], ["error", "error"], ["aborted", "aborted"],
 	]) {
 		test(`${themeName}: ${status} fits narrow and wide widths with actual Pi theme`, () => {
 			const component = new TopStatusBarComponent({
@@ -62,12 +63,12 @@ for (const themeName of ["dark", "light", "system"]) {
 test("running icon animates with braille rotation", () => {
 	const theme = getThemeByName("dark");
 	const component = new TopStatusBarComponent({ status: "running", visible: true, startTime: Date.now() - 5000 }, theme, context);
-	const first = plain(component.render(200)[0]).match(/([⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]) RUN/)?.[1];
+	const first = plain(component.render(200)[0]).match(/([⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]) running/)?.[1];
 	let changed = false;
 	for (let i = 0; i < 8; i++) {
 		const originalNow = Date.now;
 		Date.now = () => originalNow() + i * 100;
-		const next = plain(component.render(200)[0]).match(/([⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]) RUN/)?.[1];
+		const next = plain(component.render(200)[0]).match(/([⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]) running/)?.[1];
 		if (next && next !== first) changed = true;
 		Date.now = originalNow;
 	}
@@ -110,7 +111,7 @@ test("information order, unknown context, cumulative totals, branch and path", (
 		usage: { input: 1200, output: 300, total: 2500, cost: 0.123 },
 	}, getThemeByName("dark"), context);
 	const splitLine = plain(splitComp.render(200)[0]);
-	const splitFields = ["[⠿ RDY", "[📁 ipiui dev]", "[🤖 gemini3.8flash · high]", "[⬆️1.2k ⬇️300 💰 0.12¥]", "[CTX"];
+	const splitFields = ["[⠿ idle", "[📁 ipiui dev]", "[🤖 gemini3.8flash · high]", "[⬆️1.2k ⬇️300 💰 0.12¥]", "[CTX"];
 	let splitPos = -1;
 	for (const f of splitFields) {
 		const next = splitLine.indexOf(f);
@@ -153,7 +154,7 @@ function luminance({ r, g, b }) {
 	return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
 }
 for (const style of ["rainbow_blocks"]) {
-	test(`style ${style}: contrast >= 4.5:1, fills width without overflow`, () => {
+	test(`style ${style}: fills width without overflow for CJK and emoji`, () => {
 		const theme = getThemeByName("dark");
 		const component = new TopStatusBarComponent({
 			status: "idle", visible: true, style, modelId: "中文👨‍👩‍👧‍👦e\u0301", thinkingLevel: "high",
@@ -265,7 +266,7 @@ test("preview-width split layout keeps model, thinking, telemetry and CTX pills 
 	});
 	const line = plain(component.render(140)[0]);
 	assert.equal(visibleWidth(line), 140);
-	const splitFields = ["RUN", "ipiui", "dev", "gemini-3.8-flash", "medium", "⬆️35.2M", "⬇️225.0k", "💰 37.99¥", "CTX"];
+	const splitFields = ["running", "ipiui", "dev", "gemini-3.8-flash", "medium", "⬆️35.2M", "⬇️225.0k", "💰 37.99¥", "CTX"];
 	let position = -1;
 	for (const field of splitFields) {
 		const next = line.indexOf(field);
@@ -341,50 +342,49 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		assert.equal(tui.hasOverlayEntries, false);
 		assert.deepEqual(footer.render(200), []);
 		let lines = frame();
-		assert.ok(lines[0].includes("⠿ RDY"));
+		assert.ok(lines[0].includes("⠿ idle"));
 		assert.ok(!lines[2].includes(">"));
 		assert.match(lines.at(-1), /^─+$/);
 		terminal.input("hello"); assert.equal(editor.getText(), "hello");
 		chat.addChild({ render: () => Array.from({ length: 100 }, (_, i) => `Chat row ${i}`), invalidate() {} });
 		lines = frame();
 		assert.equal(lines[99], "Chat row 99");
-		assert.ok(lines[100].includes("⠿ RDY"));
+		assert.ok(lines[100].includes("⠿ idle"));
 		assert.ok(lines[102].startsWith("hello"));
 		for (const columns of [40, 80, 200]) {
 			terminal.columns = columns; terminal.resize();
 			assert.ok(frame().every(row => visibleWidth(row) <= columns));
 		}
 		// Auto-joins default 'all' group
-		await untilTitle(title => title.startsWith("[1○"));
 		await commands.get("tabname").handler("api", ctx);
-		await untilTitle(title => title === "[1○api]");
+		await untilTitle(title => title === "api");
 		assert.ok(heartbeatCallbacks.length > 0);
 		titles.push("overwritten-by-pi");
 		heartbeatCallbacks.at(-1)();
-		assert.equal(titles.at(-1), "[1○api]", "Heartbeat must reassert the last grouped title");
-		await emit("agent_start"); assert.ok(line().includes("RUN"));
-		await untilTitle(title => title === "[1▶api]");
+		assert.equal(titles.at(-1), "api", "Heartbeat must reassert the last grouped title");
+		await emit("agent_start"); assert.ok(line().includes("running"));
+		await untilTitle(title => /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]api$/.test(title));
 		await emit("tool_execution_start", { toolCallId: "a", toolName: "read" });
 		await emit("tool_execution_start", { toolCallId: "b", toolName: "bash" });
 		await emit("tool_execution_end", { toolCallId: "a" });
-		assert.ok(line().includes("RUN"));
+		assert.ok(line().includes("running"));
 		entries = [{ type: "message", message: { role: "assistant", usage: usage() } }];
 		await emit("message_end", { message: { role: "assistant", stopReason: "error", errorMessage: "429" } });
-		await emit("agent_settled", { aborted: false }); assert.ok(line().includes("ERR"));
-		await untilTitle(title => title === "[1✗api]");
+		await emit("agent_settled", { aborted: false }); assert.ok(line().includes("error"));
+		await untilTitle(title => title === "api");
 		assert.ok(line().includes("⬆️100"));
 		await emit("agent_start");
 		await emit("message_end", { message: { role: "assistant", stopReason: "stop" } });
-		await emit("agent_settled", { aborted: false }); assert.ok(line().includes("RDY"));
-		await untilTitle(title => title === "[1✓api]");
+		await emit("agent_settled", { aborted: false }); assert.ok(line().includes("idle"));
+		await untilTitle(title => title === "api");
 		await emit("agent_start"); await emit("agent_settled", { aborted: true });
-		assert.ok(line().includes("STP"));
+		assert.ok(line().includes("aborted"));
 		branch = "feature"; branchChanged(); assert.ok(line().includes("feature"));
 		await commands.get("topbar").handler("off", ctx); assert.deepEqual(widget.render(200), []);
-		await commands.get("topbar").handler("on", ctx); assert.ok(line().includes("STP"));
-		await emit("session_start"); assert.ok(line().includes("⠿ RDY"));
+		await commands.get("topbar").handler("on", ctx); assert.ok(line().includes("aborted"));
+		await emit("session_start"); assert.ok(line().includes("⠿ idle"));
 		assert.equal(editor.getText(), "hello");
-		await untilTitle(title => title === "[1○api]");
+		await untilTitle(title => title === "api");
 		await commands.get("tabgroup").handler("off", ctx);
 		assert.equal(titles.at(-1), "pi");
 		const count = titles.length;
@@ -403,4 +403,125 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		await (await import("node:fs/promises")).rm(isolatedRoot, { recursive: true, force: true });
 	}
 	assert.ok(unsubscribed >= 2);
+});
+
+
+test("title lifecycle: idle peers animate from cache, commands agree, shutdown clears timers", async () => {
+	const fs = await import("node:fs/promises");
+	const root = await fs.mkdtemp(path.join((await import("node:os")).tmpdir(), "ipiui-lifecycle-"));
+	const savedRoot = process.env.IPIUI_TEST_GROUP_ROOT;
+	const savedGroup = process.env.IPIUI_GROUP;
+	const originalNow = Date.now;
+	let now = originalNow();
+	Date.now = () => now;
+	const originalSetInterval = globalThis.setInterval;
+	const originalClearInterval = globalThis.clearInterval;
+	const timers = new Map();
+	globalThis.setInterval = (callback, delay) => {
+		const handle = { unref() {} };
+		timers.set(handle, { callback, delay });
+		return handle;
+	};
+	globalThis.clearInterval = handle => timers.delete(handle);
+	process.env.IPIUI_TEST_GROUP_ROOT = root;
+	process.env.IPIUI_GROUP = "review";
+	const handlers = new Map(), commands = new Map(), titles = [], notices = [];
+	let renderRequests = 0;
+	const ctx = {
+		...context, mode: "tui", isIdle: () => true,
+		sessionManager: { getEntries: () => [] },
+		ui: { setTitle: title => titles.push(title), notify: text => notices.push(text),
+			setWorkingVisible() {}, setFooter() {},
+			setWidget(_key, factory) {
+				factory({ requestRender: () => { renderRequests++; } }, getThemeByName("dark"));
+			}, setEditorComponent() {} },
+	};
+	extension({ on: (name, handler) => handlers.set(name, handler),
+		registerCommand: (name, command) => commands.set(name, command) });
+	const emit = (name, event = {}) => handlers.get(name)(event, ctx);
+	const command = args => commands.get("ipiui").handler(args, ctx);
+	const peer = new TabTitleGroup({ root, intervalMs: 60_000, onTitle() {}, onError: error => { throw error; } });
+	const flush = () => new Promise(resolve => setImmediate(resolve));
+	try {
+		await emit("session_start");
+		assert.equal(titles.at(-1), "ipiui");
+		now++;
+		await peer.start("review", "worker", "running");
+		const poll = [...timers.values()].find(timer => timer.delay === 1000);
+		poll.callback();
+		for (let i = 0; i < 100 && !titles.at(-1).includes("worker"); i++) {
+			await new Promise(resolve => setTimeout(resolve, 5));
+		}
+		assert.match(titles.at(-1), /^ipiui ┃ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]worker$/);
+		const directory = tabGroupDirectory("review", root);
+		const files = await fs.readdir(directory);
+		const snapshots = await Promise.all(files.map(file => fs.readFile(path.join(directory, file), "utf8")));
+		const before = titles.length;
+		now += 100;
+		for (const timer of [...timers.values()].filter(timer => timer.delay === 100)) timer.callback();
+		await flush();
+		assert.ok(titles.length > before, "An idle pane must publish peer animation frames");
+		assert.deepEqual(await Promise.all(files.map(file => fs.readFile(path.join(directory, file), "utf8"))), snapshots,
+			"Animation frames must not write peer heartbeat files");
+		await peer.stop();
+		await command("name api");
+		for (let i = 0; i < 100 && titles.at(-1) !== "api"; i++) await new Promise(resolve => setTimeout(resolve, 5));
+		assert.equal(titles.at(-1), "api");
+		assert.ok(![...timers.values()].some(timer => timer.delay === 100));
+		await command("group off");
+		await command("group");
+		assert.match(notices.at(-1), /Title group: off/);
+		assert.equal(timers.size, 0);
+		await commands.get("tabgroup").handler("review", ctx);
+		await command("status");
+		assert.match(notices.at(-1), /Title group: review/);
+		await command("group bad" + String.fromCharCode(10) + "name");
+		assert.match(notices.at(-1), /no control characters/);
+		await emit("agent_start");
+		await command("group off");
+		assert.equal(titles.at(-1), "pi");
+		assert.equal(timers.size, 1, "Only one local animation timer is needed");
+		const animation = [...timers.values()][0];
+		await command("off");
+		const hiddenRequests = renderRequests;
+		animation.callback();
+		assert.equal(renderRequests, hiddenRequests, "Hidden status bars must skip animation redraws");
+		await command("on");
+		const visibleRequests = renderRequests;
+		animation.callback();
+		assert.equal(renderRequests, visibleRequests + 1);
+		await commands.get("tabgroup").handler("review", ctx);
+		await emit("session_shutdown");
+		assert.equal(timers.size, 0, "Shutdown during a run must release every timer");
+		await emit("session_shutdown");
+	} finally {
+		await peer.stop();
+		await emit("session_shutdown");
+		globalThis.setInterval = originalSetInterval;
+		globalThis.clearInterval = originalClearInterval;
+		Date.now = originalNow;
+		if (savedRoot === undefined) delete process.env.IPIUI_TEST_GROUP_ROOT;
+		else process.env.IPIUI_TEST_GROUP_ROOT = savedRoot;
+		if (savedGroup === undefined) delete process.env.IPIUI_GROUP;
+		else process.env.IPIUI_GROUP = savedGroup;
+		await fs.rm(root, { recursive: true, force: true });
+	}
+});
+
+test("invalid startup group does not prevent the extension from starting", async () => {
+	const savedGroup = process.env.IPIUI_GROUP;
+	process.env.IPIUI_GROUP = "x".repeat(65);
+	const handlers = new Map(), notices = [];
+	extension({ on: (name, handler) => handlers.set(name, handler), registerCommand() {} });
+	try {
+		await handlers.get("session_start")({}, {
+			...context, mode: "tui", isIdle: () => true, sessionManager: { getEntries: () => [] },
+			ui: { notify: text => notices.push(text), setWorkingVisible() {}, setFooter() {}, setWidget() {}, setEditorComponent() {} },
+		});
+		assert.ok(notices.some(text => text.includes("could not join title group")));
+	} finally {
+		await handlers.get("session_shutdown")();
+		if (savedGroup === undefined) delete process.env.IPIUI_GROUP;
+		else process.env.IPIUI_GROUP = savedGroup;
+	}
 });

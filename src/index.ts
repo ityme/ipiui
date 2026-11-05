@@ -71,8 +71,7 @@ const RAW_RAINBOW = [
 const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 // 每个字母赋予动态彩虹渐变色
-function rainbowChars(text: string, timeMs = 0): { ch: string; col: Color }[] {
-	const graphemes = [...GRAPHEME_SEGMENTER.segment(text)].map(s => s.segment);
+function rainbowChars(graphemes: string[], timeMs = 0): { ch: string; col: Color }[] {
 	const total = graphemes.length;
 	const shift = (timeMs / 4000) % 1;
 	return graphemes.map((ch, i) => {
@@ -89,12 +88,13 @@ function getRainbowBlockPalette(isDark: boolean) {
 			canvasBg: rgbColor(9, 11, 16),
 			
 			// 模块 1: 状态胶囊背景
-			bgStatusReady: mixColors(DARK_CANVAS, rgbColor(16, 185, 129), 0.20, "srgb"),
-			bgStatusRun: mixColors(DARK_CANVAS, rgbColor(245, 158, 11), 0.22, "srgb"),
+			// idle: 沉稳低饱和石板青灰微光底（偏灰）；running: 鲜活翠绿底
+			bgStatusReady: mixColors(DARK_CANVAS, rgbColor(100, 116, 139), 0.16, "srgb"),
+			bgStatusRun: mixColors(DARK_CANVAS, rgbColor(34, 197, 94), 0.22, "srgb"),
 			bgStatusErr: mixColors(DARK_CANVAS, rgbColor(239, 68, 68), 0.22, "srgb"),
 			bgStatusStp: mixColors(DARK_CANVAS, rgbColor(249, 115, 22), 0.20, "srgb"),
-			fgStatusReady: rgbColor(74, 222, 128),
-			fgStatusRun: rgbColor(251, 191, 36),
+			fgStatusReady: rgbColor(148, 163, 184), // 优雅石板青灰，不刺眼
+			fgStatusRun: rgbColor(74, 222, 128),   // 翠绿
 			fgStatusErr: rgbColor(248, 113, 113),
 			fgStatusStp: rgbColor(251, 146, 60),
 
@@ -125,12 +125,12 @@ function getRainbowBlockPalette(isDark: boolean) {
 	} else {
 		return {
 			canvasBg: rgbColor(248, 250, 252),
-			bgStatusReady: mixColors(LIGHT_CANVAS, rgbColor(187, 247, 208), 0.25, "srgb"),
-			bgStatusRun: mixColors(LIGHT_CANVAS, rgbColor(254, 240, 138), 0.25, "srgb"),
+			bgStatusReady: mixColors(LIGHT_CANVAS, rgbColor(226, 232, 240), 0.40, "srgb"),
+			bgStatusRun: mixColors(LIGHT_CANVAS, rgbColor(187, 247, 208), 0.30, "srgb"),
 			bgStatusErr: mixColors(LIGHT_CANVAS, rgbColor(254, 202, 202), 0.25, "srgb"),
 			bgStatusStp: mixColors(LIGHT_CANVAS, rgbColor(254, 215, 170), 0.25, "srgb"),
-			fgStatusReady: rgbColor(22, 101, 52),
-			fgStatusRun: rgbColor(146, 64, 14),
+			fgStatusReady: rgbColor(71, 85, 105), // 中性青灰
+			fgStatusRun: rgbColor(21, 128, 61),
 			fgStatusErr: rgbColor(153, 27, 27),
 			fgStatusStp: rgbColor(154, 52, 18),
 
@@ -157,6 +157,9 @@ function getRainbowBlockPalette(isDark: boolean) {
 	}
 }
 
+const DARK_PALETTE = getRainbowBlockPalette(true);
+const LIGHT_PALETTE = getRainbowBlockPalette(false);
+
 function singleLine(text: string): string {
 	return stripTerminalSequences(text).replace(/[\x00-\x1f\x7f-\x9f]/g, " ").replace(/ +/g, " ").trim();
 }
@@ -175,17 +178,31 @@ function formatDuration(sec: number): string {
 	if (!sec || sec <= 0) return "";
 	const s = sec % 60;
 	const m = Math.floor(sec / 60) % 60;
-	const h = Math.floor(sec / 3600);
+	const h = Math.floor(sec / 3600) % 24;
+	const d = Math.floor(sec / 86400);
+	if (d > 0) {
+		const sStr = String(s).padStart(2, "0");
+		const mStr = String(m).padStart(2, "0");
+		const hStr = String(h).padStart(2, "0");
+		return `${d}d${hStr}h${mStr}m${sStr}s`;
+	}
 	if (h > 0) {
-		return `${h}h${m > 0 || s > 0 ? `${m}m` : ""}${s > 0 ? `${s}s` : ""}`;
+		const sStr = String(s).padStart(2, "0");
+		const mStr = String(m).padStart(2, "0");
+		return `${h}h${mStr}m${sStr}s`;
 	}
 	if (m > 0) {
-		return `${m}m${s > 0 ? `${s}s` : ""}`;
+		const sStr = String(s).padStart(2, "0");
+		return `${m}m${sStr}s`;
 	}
 	return `${s}s`;
 }
 
 export class TopStatusBarComponent implements Component {
+	private rainbowText = "";
+	private rainbowGraphemes: string[] = [];
+	private rainbowBlocks: string[][] = [];
+
 	constructor(private state: TopBarState, private theme: Theme, private context: ExtensionContext) {}
 
 	updateContext(context: ExtensionContext) {
@@ -197,11 +214,11 @@ export class TopStatusBarComponent implements Component {
 		const st = this.state;
 		const now = Date.now();
 		const isDark = this.theme.appearance !== "light";
-		const p = getRainbowBlockPalette(isDark);
+		const p = isDark ? DARK_PALETTE : LIGHT_PALETTE;
 
-		// 1. Status 徽章（3 字符缩写，默认占位 100h32m10s，自动升级单位，无耗时不显示）
+		// 1. Status 徽章（使用 Pi 原生状态名：idle, running, error, aborted）
 		let statusIcon = "⠿";
-		let statusLabel = "RDY";
+		let statusLabel = "idle";
 		let statusBg = p.bgStatusReady;
 		let statusFg = p.fgStatusReady;
 		let elapsedSec = 0;
@@ -210,33 +227,30 @@ export class TopStatusBarComponent implements Component {
 			elapsedSec = st.startTime ? Math.floor((now - st.startTime) / 1000) : 0;
 			const frame = BRAILLE_SPINNER[Math.floor(now / 100) % BRAILLE_SPINNER.length];
 			statusIcon = frame;
-			statusLabel = "RUN";
+			statusLabel = "running";
 			statusBg = p.bgStatusRun;
 			statusFg = p.fgStatusRun;
 		} else if (st.status === "error") {
 			elapsedSec = st.durationMs ? Math.floor(st.durationMs / 1000) : 0;
 			statusIcon = "✗";
-			statusLabel = "ERR";
+			statusLabel = "error";
 			statusBg = p.bgStatusErr;
 			statusFg = p.fgStatusErr;
 		} else if (st.status === "aborted") {
 			elapsedSec = st.durationMs ? Math.floor(st.durationMs / 1000) : 0;
 			statusIcon = "■";
-			statusLabel = "STP";
+			statusLabel = "aborted";
 			statusBg = p.bgStatusStp;
 			statusFg = p.fgStatusStp;
 		} else {
 			elapsedSec = st.durationMs ? Math.floor(st.durationMs / 1000) : 0;
 		}
 
-		// 无耗时不显示，有耗时自动格式化 (如 54s, 3m7s, 100h32m10s)
+		// 无耗时不显示，有耗时自动格式化 (如 54s, 3m07s, 100h32m10s, 9999d23h59m59s)
+		// 紧凑显示，不固定长度补空格
 		const durStr = formatDuration(elapsedSec);
 		const statusCoreText = durStr ? `${statusIcon} ${statusLabel} ${durStr}` : `${statusIcon} ${statusLabel}`;
-		// 默认以 "100h32m10s" (10 字符) 占位保证宽度定长稳定
-		const MAX_TIME_WIDTH = 10;
-		const TARGET_INNER_WIDTH = 1 + 1 + 3 + 1 + MAX_TIME_WIDTH; // 16 列
-		const curCoreVis = visibleWidth(statusCoreText);
-		const statusPadded = statusCoreText + " ".repeat(Math.max(0, TARGET_INNER_WIDTH - curCoreVis));
+		const statusPadded = statusCoreText;
 
 		// 2. 项目与分支
 		const usage = st.usage ?? { input: 0, output: 0, total: 0, cost: 0 };
@@ -312,11 +326,19 @@ export class TopStatusBarComponent implements Component {
 		// 右侧保持严格视觉顺序：模块 2 -> 模块 3 -> 模块 4 -> 模块 5
 		const visibleItems = rightItems.filter(item => activeSet.has(item.id));
 		// Build one color band across all visible telemetry blocks, including brackets and gaps.
-		const band = rainbowChars(visibleItems.filter(item => item.bg !== undefined).map(item => item.pill).join(" "), now);
+		const rainbowItems = visibleItems.filter(item => item.bg !== undefined);
+		const rainbowText = rainbowItems.map(item => item.pill).join(" ");
+		if (rainbowText !== this.rainbowText) {
+			this.rainbowText = rainbowText;
+			this.rainbowBlocks = rainbowItems.map(item => [...GRAPHEME_SEGMENTER.segment(item.pill)].map(part => part.segment));
+			this.rainbowGraphemes = this.rainbowBlocks.flatMap((letters, i) => i === 0 ? letters : [" ", ...letters]);
+		}
+		const band = rainbowChars(this.rainbowGraphemes, now);
 		let bandIndex = 0;
+		let blockIndex = 0;
 		const orderedRight = visibleItems.map(item => {
 			if (item.bg === undefined) return item.pill;
-			const letters = [...GRAPHEME_SEGMENTER.segment(item.pill)];
+			const letters = this.rainbowBlocks[blockIndex++];
 			const text = letters.map(() => {
 				const { ch, col } = band[bandIndex++];
 				return this.theme.style(ch, { fg: col, bg: item.bg, bold: true });
@@ -350,13 +372,14 @@ export default function (pi: ExtensionAPI) {
 	let tuiInstance: TUI | null = null;
 	let bar: TopStatusBarComponent | null = null;
 	let stopBranchWatch: (() => void) | undefined;
-	let timer: ReturnType<typeof setInterval> | undefined;
 	let iconTimer: ReturnType<typeof setInterval> | undefined;
 	const activeTools = new Map<string, string>();
 	let lastAssistantFailed = false;
 	let titleGroup: TabTitleGroup | undefined;
-	let groupName: string | undefined = "all";
+	const defaultGroupName = process.env.IPIUI_GROUP || "all";
+	let groupName: string | undefined = defaultGroupName;
 	let paneLabel = "cmd";
+	let customPaneLabel = false;
 	let titleStatus: TabStatus = "idle";
 	let titleHeartbeat: ReturnType<typeof setInterval> | undefined;
 	let lastPublishedTitle = "";
@@ -367,12 +390,20 @@ export default function (pi: ExtensionAPI) {
 		if (currentContext?.mode === "tui") currentContext.ui.setTitle(title);
 	};
 	const publishTitle = () => { void titleGroup?.update(titleStatus, paneLabel); };
+	const stopTitleGroup = async () => {
+		if (titleHeartbeat) clearInterval(titleHeartbeat);
+		titleHeartbeat = undefined;
+		const previous = titleGroup;
+		titleGroup = undefined;
+		lastPublishedTitle = "";
+		await previous?.stop();
+	};
 	const joinTitleGroup = async (name: string) => {
-		await titleGroup?.stop();
+		await stopTitleGroup();
 		titleGroup = new TabTitleGroup({
 			root: tabGroupDirectoryRoot,
 			onTitle: writeTitle,
-			onError: () => currentContext?.ui.notify("ipiui: title synchronization failed; use /tabgroup off and rejoin to retry", "warning"),
+			onError: () => currentContext?.ui.notify("ipiui: title synchronization failed; use /ipiui group off and rejoin to retry", "warning"),
 		});
 		try {
 			await titleGroup.start(name, paneLabel, titleStatus);
@@ -383,22 +414,24 @@ export default function (pi: ExtensionAPI) {
 			}, 1500);
 			titleHeartbeat.unref();
 		} catch (error) {
-			await titleGroup.stop();
-			titleGroup = undefined;
+			await stopTitleGroup();
 			groupName = undefined;
 			throw error;
 		}
 	};
 
 	const stopTimer = () => {
-		if (timer) clearInterval(timer);
-		timer = undefined;
+		stopIconTimer();
+	};
+	const stopIconTimer = () => {
 		if (iconTimer) clearInterval(iconTimer);
 		iconTimer = undefined;
 	};
 	const startIconTimer = () => {
-		if (iconTimer) clearInterval(iconTimer);
-		iconTimer = setInterval(redraw, 100);
+		if (iconTimer) return;
+		iconTimer = setInterval(() => {
+			if (state.visible) redraw();
+		}, 100);
 		iconTimer.unref();
 	};
 	const redraw = () => {
@@ -410,6 +443,10 @@ export default function (pi: ExtensionAPI) {
 		state.modelId = ctx.model?.id;
 		state.thinkingLevel = ctx.thinkingLevel;
 		state.cwd = ctx.cwd;
+		if (!customPaneLabel && ctx.cwd) {
+			const folder = ctx.cwd.split(/[\\/]/).filter(Boolean).pop();
+			if (folder) paneLabel = cleanTitleLabel(folder);
+		}
 		bar?.updateContext(ctx);
 		if (usage) state.usage = collectUsage(ctx.sessionManager.getEntries());
 	};
@@ -419,6 +456,7 @@ export default function (pi: ExtensionAPI) {
 		stopBranchWatch?.();
 		state.status = ctx.isIdle() ? "idle" : "running";
 		state.errorMessage = undefined;
+		state.durationMs = undefined;
 		state.startTime = state.status === "running" ? Date.now() : undefined;
 		state.activeTool = undefined;
 		activeTools.clear();
@@ -453,7 +491,13 @@ export default function (pi: ExtensionAPI) {
 		if (process.env.IPIUI_TEST_GROUP_ROOT) {
 			tabGroupDirectoryRoot = process.env.IPIUI_TEST_GROUP_ROOT;
 		}
-		if (groupName) await joinTitleGroup(groupName);
+		if (groupName) {
+			try {
+				await joinTitleGroup(groupName);
+			} catch {
+				ctx.ui.notify("ipiui: could not join title group; check IPIUI_GROUP and temporary-directory access", "warning");
+			}
+		}
 		if (state.status === "running") startIconTimer();
 		redraw();
 	});
@@ -467,7 +511,6 @@ export default function (pi: ExtensionAPI) {
 		state.errorMessage = undefined;
 		lastAssistantFailed = false;
 		stopTimer();
-		timer = setInterval(redraw, 1000);
 		startIconTimer();
 		redraw();
 	});
@@ -520,75 +563,104 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_tree", refreshSession);
 	pi.on("session_compact", refreshSession);
 	pi.on("session_shutdown", async () => {
-		await titleGroup?.stop();
-		if (titleHeartbeat) clearInterval(titleHeartbeat);
-		titleHeartbeat = undefined;
-		titleGroup = undefined;
 		stopTimer();
+		await stopTitleGroup();
 		stopBranchWatch?.();
 		stopBranchWatch = undefined;
 		currentContext = null;
 		bar = null;
 		tuiInstance = null;
 	});
-	pi.registerCommand("tabgroup", {
-		description: "Join or switch split-pane title group (/tabgroup [NAME|off])",
-		handler: async (args, ctx) => {
-			if (ctx.mode !== "tui") return;
-			sync(ctx);
-			const name = args.trim();
-			if (!name) {
-				ctx.ui.notify(groupName ? `Title group: ${groupName}; name: ${paneLabel}` : "Auto-grouped: all (use /tabgroup NAME or /tabgroup off)", "info");
+	const handleCommand = async (args: string, ctx: ExtensionContext) => {
+		if (ctx.mode !== "tui") return;
+		sync(ctx);
+		const [, sub = "", remainder = ""] = args.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/) ?? [];
+		const subCmd = sub.toLowerCase();
+		const param = remainder.trim();
+
+		if (!subCmd || subCmd === "help") {
+			ctx.ui.notify(
+				`ipiui commands:\n` +
+				`  /ipiui [on|off|toggle]  - 状态栏显隐开关 (当前: ${state.visible ? "ON" : "OFF"})\n` +
+				`  /ipiui name [NAME]      - 设置当前窗格名称 (当前: ${paneLabel})\n` +
+				`  /ipiui group [NAME|off] - 设置标题分组 (当前: ${groupName ?? "off"})\n` +
+				`  /ipiui status           - 查看当前状态信息`,
+				"info"
+			);
+			return;
+		}
+
+		if (["on", "off", "toggle"].includes(subCmd)) {
+			state.visible = subCmd === "on" ? true : subCmd === "off" ? false : !state.visible;
+			ctx.ui.notify(`Status bar: ${state.visible ? "ON" : "OFF"}`, "info");
+			redraw();
+			return;
+		}
+
+		if (subCmd === "name") {
+			if (!param) {
+				ctx.ui.notify(`Title name: ${paneLabel}; use /ipiui name NAME`, "info");
 				return;
 			}
-			if (name === "off") {
-				await titleGroup?.stop();
-				if (titleHeartbeat) clearInterval(titleHeartbeat);
-				titleHeartbeat = undefined;
-				titleGroup = undefined;
+			paneLabel = cleanTitleLabel(param);
+			customPaneLabel = true;
+			publishTitle();
+			ctx.ui.notify(`Title name: ${paneLabel}`, "info");
+			return;
+		}
+
+		if (subCmd === "group") {
+			if (!param) {
+				ctx.ui.notify(groupName ? `Title group: ${groupName}; name: ${paneLabel}` : "Title group: off (use /ipiui group NAME to rejoin)", "info");
+				return;
+			}
+			if (param === "off") {
+				await stopTitleGroup();
 				groupName = undefined;
-				lastPublishedTitle = "";
 				ctx.ui.setTitle("pi");
 				ctx.ui.notify("Title group disabled", "info");
 				return;
 			}
-			if (name.length > 64 || /[\x00-\x1f\x7f]/.test(name)) {
+			if (param.length > 64 || /[\x00-\x1f\x7f]/.test(param)) {
 				ctx.ui.notify("Group must be 1–64 characters with no control characters", "warning");
 				return;
 			}
 			try {
-				await joinTitleGroup(name);
-				ctx.ui.notify(`Joined title group: ${name}`, "info");
+				await joinTitleGroup(param);
+				ctx.ui.notify(`Joined title group: ${param}`, "info");
 			} catch {
 				ctx.ui.notify("Could not join title group; check temporary-directory access", "error");
 			}
-		},
-	});
-	pi.registerCommand("tabname", {
-		description: "Set this Pi member's short title label (/tabname api)",
-		handler: async (args, ctx) => {
-			if (ctx.mode !== "tui") return;
-			sync(ctx);
-			if (!args.trim()) {
-				ctx.ui.notify(`Title name: ${paneLabel}; use /tabname NAME`, "info");
-				return;
-			}
-			paneLabel = cleanTitleLabel(args);
-			publishTitle();
-			ctx.ui.notify(`Title name: ${paneLabel}`, "info");
-		},
+			return;
+		}
+
+		if (subCmd === "status") {
+			ctx.ui.notify(
+				`ipiui status:\n` +
+				`  TopBar: ${state.visible ? "ON" : "OFF"}\n` +
+				`  Pane name: ${paneLabel}\n` +
+				`  Title group: ${groupName ?? "off"}`,
+				"info"
+			);
+			return;
+		}
+
+		ctx.ui.notify(`Unknown subcommand: ${subCmd}. Use /ipiui for help`, "warning");
+	};
+	pi.registerCommand("ipiui", {
+		description: "Configure ipiui status bar and pane title (/ipiui [on|off|name|group|status])",
+		handler: handleCommand,
 	});
 	pi.registerCommand("topbar", {
-		description: "Toggle or change status bar (/topbar [on|off|toggle])",
-		handler: async (args, ctx) => {
-			const action = args.trim().toLowerCase();
-			if (["", "on", "off", "toggle"].includes(action)) {
-				state.visible = action === "on" ? true : action === "off" ? false : !state.visible;
-				ctx.ui.notify(`Status bar: ${state.visible ? "ON" : "OFF"}`, "info");
-				redraw();
-				return;
-			}
-			ctx.ui.notify("Usage: /topbar [on|off|toggle]", "warning");
-		},
+		description: "Alias for /ipiui [on|off|toggle]",
+		handler: (args, ctx) => handleCommand(args.trim() || "toggle", ctx),
+	});
+	pi.registerCommand("tabgroup", {
+		description: "Alias for /ipiui group [NAME|off]",
+		handler: (args, ctx) => handleCommand(`group ${args}`, ctx),
+	});
+	pi.registerCommand("tabname", {
+		description: "Alias for /ipiui name NAME",
+		handler: (args, ctx) => handleCommand(`name ${args}`, ctx),
 	});
 }

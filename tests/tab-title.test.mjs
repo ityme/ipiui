@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 import test from "node:test";
 import { TabTitleGroup, cleanTitleLabel, tabGroupDirectory } from "../src/tab-title.ts";
@@ -11,7 +10,7 @@ const options = (root, onTitle, now) => ({ root, onTitle, now, intervalMs: 60_00
 	onError: error => { throw error; } });
 
 test("title labels remove controls and grouping delimiters", () => {
-	assert.equal(cleanTitleLabel("api\x1b[31m|[web]\x07"), "api web");
+	assert.equal(cleanTitleLabel("api\x1b[31m|┃[web]\x07"), "api web");
 	assert.equal(cleanTitleLabel("\x1b]0;forged\x07cmd"), "cmd");
 	assert.equal(cleanTitleLabel(" "), "cmd");
 	assert.equal([...cleanTitleLabel("😀".repeat(30))].length, 20);
@@ -31,22 +30,22 @@ test("two members aggregate, update, isolate groups, expire crashed peers, clean
 		now++;
 		await second.start("work", "cmd", "done");
 		await first.refresh();
-		assert.equal(firstTitle, "[1▶cmd 2✓cmd]");
+		assert.match(firstTitle, /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]cmd ┃ cmd$/);
 		assert.equal(secondTitle, firstTitle);
 		await isolated.start("another-tab", "other", "idle");
-		assert.equal(isolatedTitle, "[1○other]");
+		assert.equal(isolatedTitle, "other");
 		await Promise.all([first.update("error", "api"), second.update("aborted", "web")]);
 		await Promise.all([first.refresh(), second.refresh()]);
-		assert.equal(firstTitle, "[1✗api 2■web]");
+		assert.equal(firstTitle, "api ┃ web");
 		assert.equal(secondTitle, firstTitle);
 		const directory = tabGroupDirectory("work", root);
 		await writeFile(join(directory, "aaaa.json"), "not-json");
-		await first.refresh(); assert.equal(firstTitle, "[1✗api 2■web]");
+		await first.refresh(); assert.equal(firstTitle, "api ┃ web");
 		now += 16_000;
-		await first.refresh(); assert.equal(firstTitle, "[1✗api]");
+		await first.refresh(); assert.equal(firstTitle, "api");
 		await second.refresh(); await first.refresh();
-		assert.equal(firstTitle, "[1✗api 2■web]");
-		await second.stop(); await first.refresh(); assert.equal(firstTitle, "[1✗api]");
+		assert.equal(firstTitle, "api ┃ web");
+		await second.stop(); await first.refresh(); assert.equal(firstTitle, "api");
 		await first.stop(); await first.stop();
 		assert.equal((await readdir(directory)).filter(name => name.endsWith(".tmp")).length, 0);
 		assert.deepEqual(errors, []);
@@ -67,6 +66,43 @@ test("group names cannot escape the registry and validation errors do not start 
 	} finally { await member.stop(); await rm(root, { recursive: true, force: true }); }
 });
 
+
+test("concurrent refreshes coalesce and keep the latest status", async () => {
+	const root = await mkdtemp(join(tmpdir(), "ipiui-refresh-test-"));
+	let publications = 0, title;
+	const member = new TabTitleGroup(options(root, value => { title = value; publications++; }));
+	try {
+		await member.start("work", "api", "idle");
+		publications = 0;
+		await Promise.all(Array.from({ length: 100 }, () => member.refresh()));
+		assert.equal(publications, 0, "Unchanged titles must not be republished on heartbeat refreshes");
+		await member.update("idle", "renamed");
+		assert.equal(publications, 1, "A label change must publish immediately");
+		await Promise.all([member.update("running"), member.update("done", "latest")]);
+		assert.equal(title, "latest");
+	} finally {
+		await member.stop();
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("stale files cannot hide live peers beyond the first 100 filenames", async () => {
+	const root = await mkdtemp(join(tmpdir(), "ipiui-stale-test-"));
+	let title;
+	const member = new TabTitleGroup(options(root, value => { title = value; }));
+	try {
+		await member.start("work", "api", "idle");
+		const directory = tabGroupDirectory("work", root);
+		await Promise.all(Array.from({ length: 101 }, (_, i) => writeFile(join(directory, `${String(i).padStart(8, "0")}.json`), "{}")));
+		const peer = { version: 1, id: "ffffffff-ffff-ffff-ffff-ffffffffffff", started: Date.now(), updated: Date.now(), label: "peer", status: "idle" };
+		await writeFile(join(directory, `${peer.id}.json`), JSON.stringify(peer));
+		await member.refresh();
+		assert.ok(title.includes("peer"), "Live peers must not be excluded by stale filenames");
+	} finally {
+		await member.stop();
+		await rm(root, { recursive: true, force: true });
+	}
+});
 
 test("independent Node processes exchange live title records", async () => {
  const root = await mkdtemp(join(tmpdir(), "ipiui-title-process-test-"));
@@ -92,12 +128,12 @@ test("independent Node processes exchange live title records", async () => {
    await new Promise(resolve=>setTimeout(resolve,20));}
  };
  try {
-  const a=start("cmd","running"); await until(()=>a.messages.some(m=>m.title==="[1▶cmd]"));
+  const a=start("cmd","running"); await until(()=>a.messages.some(m=>/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]cmd$/.test(m.title)));
   const b=start("cmd","done");
-  await until(()=>[a,b].every(p=>p.messages.some(m=>m.title==="[1▶cmd 2✓cmd]")));
+  await until(()=>[a,b].every(p=>p.messages.some(m=>/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]cmd ┃ cmd$/.test(m.title))));
   const bExit=new Promise(resolve=>b.child.once("exit",resolve)); b.child.send("stop"); await bExit;
   const count=a.messages.length;
-  await until(()=>a.messages.slice(count).some(m=>m.title==="[1▶cmd]"));
+  await until(()=>a.messages.slice(count).some(m=>/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]cmd$/.test(m.title)));
   assert.ok([a,b].every(p=>!p.messages.some(m=>m.error)));
  } finally {
   await Promise.all(children.map(child=>new Promise(resolve=>{
