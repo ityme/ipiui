@@ -402,8 +402,18 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		heartbeatCallbacks.at(-1)();
 		assert.equal(titles.at(-1), "api", "Heartbeat must reassert the last grouped title");
 		await emit("agent_start"); assert.ok(line().includes("running"));
+		await emit("message_update", { message: { role: "assistant" }, assistantMessageEvent: { type: "thinking_start" } });
+		assert.ok(line().includes("Thinking..."));
+		assert.ok(!line().includes("idle"));
+		await emit("message_update", { message: { role: "assistant" }, assistantMessageEvent: { type: "thinking_delta", delta: "hidden reasoning text" } });
+		assert.ok(line().includes("Thinking..."));
+		assert.ok(!line().includes("hidden reasoning text"));
+		await emit("message_update", { message: { role: "assistant" }, assistantMessageEvent: { type: "thinking_end" } });
+		assert.ok(line().includes("running"));
+		await emit("message_update", { message: { role: "assistant" }, assistantMessageEvent: { type: "thinking_start" } });
 		await untilTitle(title => /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]api$/.test(title));
 		await emit("tool_execution_start", { toolCallId: "a", toolName: "read" });
+		assert.ok(!line().includes("Thinking..."));
 		await emit("tool_execution_start", { toolCallId: "b", toolName: "bash" });
 		await emit("tool_execution_end", { toolCallId: "a" });
 		assert.ok(line().includes("running"));

@@ -24,6 +24,7 @@ export interface TopBarState {
 	modelId?: string;
 	thinkingLevel?: string;
 	activeTool?: string;
+	isThinking?: boolean;
 	gitBranch?: string | null;
 	cwd?: string;
 	visible: boolean;
@@ -284,7 +285,7 @@ export class TopStatusBarComponent implements Component {
 			elapsedSec = st.startTime ? Math.floor((now - st.startTime) / 1000) : 0;
 			const frame = BRAILLE_SPINNER[Math.floor(now / 100) % BRAILLE_SPINNER.length];
 			statusIcon = frame;
-			statusLabel = "running";
+			statusLabel = st.isThinking ? "Thinking..." : "running";
 			statusBg = p.bgStatusRun;
 			statusFg = p.fgStatusRun;
 		} else if (st.status === "error") {
@@ -510,6 +511,7 @@ export default function (pi: ExtensionAPI) {
 		state.durationMs = undefined;
 		state.startTime = state.status === "running" ? Date.now() : undefined;
 		state.activeTool = undefined;
+		state.isThinking = false;
 		activeTools.clear();
 		lastAssistantFailed = false;
 		sync(ctx, true);
@@ -556,6 +558,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("agent_start", (_event, ctx) => {
 		sync(ctx);
 		state.status = "running";
+		state.isThinking = false;
 		titleStatus = "running";
 		publishTitle();
 		state.startTime ??= Date.now();
@@ -565,8 +568,19 @@ export default function (pi: ExtensionAPI) {
 		startIconTimer();
 		redraw();
 	});
+	pi.on("message_update", (event, ctx) => {
+		if (event.message.role !== "assistant" || state.status !== "running") return;
+		const type = event.assistantMessageEvent.type;
+		const thinking = type === "thinking_start" || type === "thinking_delta";
+		if (!thinking && !["thinking_end", "text_start", "text_delta", "toolcall_start", "done", "error"].includes(type)) return;
+		if (state.isThinking === thinking) return;
+		state.isThinking = thinking;
+		sync(ctx);
+		redraw();
+	});
 	pi.on("tool_execution_start", (event, ctx) => {
 		sync(ctx);
+		state.isThinking = false;
 		activeTools.set(event.toolCallId, event.toolName);
 		state.activeTool = [...activeTools.values()].join(", ");
 		redraw();
@@ -579,6 +593,7 @@ export default function (pi: ExtensionAPI) {
 	});
 	pi.on("message_end", (event, ctx) => {
 		if (event.message.role === "assistant") {
+			state.isThinking = false;
 			lastAssistantFailed = event.message.stopReason === "error";
 			state.errorMessage = lastAssistantFailed ? event.message.errorMessage || "Request failed" : undefined;
 		}
@@ -595,6 +610,7 @@ export default function (pi: ExtensionAPI) {
 		titleStatus = event.aborted ? "aborted" : lastAssistantFailed ? "error" : "done";
 		publishTitle();
 		state.startTime = undefined;
+		state.isThinking = false;
 		activeTools.clear();
 		state.activeTool = undefined;
 		redraw();
