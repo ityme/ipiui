@@ -385,6 +385,9 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 	const root = await fs.mkdtemp(path.join((await import("node:os")).tmpdir(), "ipiui-lifecycle-"));
 	const savedRoot = process.env.IPIUI_TEST_GROUP_ROOT;
 	const savedGroup = process.env.IPIUI_GROUP;
+	const originalNow = Date.now;
+	let now = originalNow();
+	Date.now = () => now;
 	const originalSetInterval = globalThis.setInterval;
 	const originalClearInterval = globalThis.clearInterval;
 	const timers = new Map();
@@ -416,6 +419,7 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 	try {
 		await emit("session_start");
 		assert.equal(titles.at(-1), "ipiui");
+		now++;
 		await peer.start("review", "worker", "running");
 		const poll = [...timers.values()].find(timer => timer.delay === 1000);
 		poll.callback();
@@ -427,12 +431,8 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 		const files = await fs.readdir(directory);
 		const snapshots = await Promise.all(files.map(file => fs.readFile(path.join(directory, file), "utf8")));
 		const before = titles.length;
-		const originalNow = Date.now;
-		try {
-			const nextFrame = originalNow() + 100;
-			Date.now = () => nextFrame;
-			for (const timer of [...timers.values()].filter(timer => timer.delay === 100)) timer.callback();
-		} finally { Date.now = originalNow; }
+		now += 100;
+		for (const timer of [...timers.values()].filter(timer => timer.delay === 100)) timer.callback();
 		await flush();
 		assert.ok(titles.length > before, "An idle pane must publish peer animation frames");
 		assert.deepEqual(await Promise.all(files.map(file => fs.readFile(path.join(directory, file), "utf8"))), snapshots,
@@ -473,6 +473,7 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 		await emit("session_shutdown");
 		globalThis.setInterval = originalSetInterval;
 		globalThis.clearInterval = originalClearInterval;
+		Date.now = originalNow;
 		if (savedRoot === undefined) delete process.env.IPIUI_TEST_GROUP_ROOT;
 		else process.env.IPIUI_TEST_GROUP_ROOT = savedRoot;
 		if (savedGroup === undefined) delete process.env.IPIUI_GROUP;

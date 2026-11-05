@@ -31,23 +31,41 @@ Totals follow Pi's footer accounting across all session entries, including usage
 
 Pi retains ownership of editing, completion, paste, interrupt, shortcuts, IME markers and mouse coordinates. Completion menus still appear temporarily below the input border when active; the idle footer is empty.
 
-## Try it
+## Install
+
+Requires Pi 1.5.0 (tested) and Node.js 22.19 or newer. Pi loads the TypeScript entry directly; no build step or runtime dependency installation is needed for a local checkout.
+
+Install a local checkout now:
+
+```bash
+pi install I:/ispace/ipiui
+```
+
+For project-only installation, run `pi install ./path/to/ipiui --local` from the target project. Relative package paths resolve from the settings file. A local installation loads the checkout in place, so keep that directory available.
+
+After these changes are pushed to the GitHub repository, install from Git:
+
+```bash
+pi install git:github.com/ityme/ipiui
+```
+
+After the package is published to npm, the npm installation command is:
+
+```bash
+pi install npm:ipiui
+```
+
+The Git and npm commands require the corresponding remote package to be available; creating a local release archive does not publish it. Use `pi list` to inspect installed packages. To remove a local installation, run `pi remove I:/ispace/ipiui`; for Git or npm, pass the same source used to install it.
+
+Restart Pi or run `/reload` after installation. `/ipiui` shows help. To try the checkout for one invocation without saving settings:
 
 ```bash
 pi -e I:/ispace/ipiui
 ```
 
-For an existing session started with this extension, run `/reload` after updates.
+If you previously added this directory to the `extensions` array manually, remove that duplicate entry when switching to `pi install`.
 
-For permanent installation, add the path to the existing `extensions` array in your Pi settings, preserving other entries:
-
-```json
-{
-  "extensions": ["I:/ispace/ipiui"]
-}
-```
-
-This extension restores the native editor and hides the footer. Disable competing editor/footer extensions such as `pi-powerline-footer`. It does not change your global configuration automatically or remove widgets owned by unrelated extensions.
+This extension restores the native editor and hides the footer. Disable competing editor/footer extensions such as `pi-powerline-footer`. Only `pi install` modifies package settings; the extension itself does not edit global configuration or remove widgets owned by unrelated extensions.
 
 ## Commands
 
@@ -90,6 +108,11 @@ Tested against Pi 1.5.0.
 ```bash
 npm run check
 npm test
+npm run check:package
 ```
+
+`check:package` runs `npm pack`, extracts the artifact, installs it with the real Pi CLI into an isolated configuration directory, and verifies Pi discovers and loads the packaged extension. It does not use your global settings or call a model. If Pi is installed outside the standard location, set `PI_TEST_HOST_ROOT` to its `node_modules` directory.
+
+Create a release archive with `npm pack --pack-destination dist` (create `dist` first). The tarball contains only the extension source, package metadata, license, changelog, README and HTML gallery. To install an archive locally, extract it and run `pi install /absolute/path/to/extracted/package`; a raw `.tgz` path is not a Pi local extension directory.
 
 Tests cover three real themes, terminal width handling, CJK/emoji rendering, usage accounting, field order, regular-mode placement without overlays, empty footer, branch updates, parallel tools, lifecycle/cleanup, native prompt without an added `>`, wrapping, IME markers, mouse placement, paste, completion and shortcuts. Title tests cover independent Node processes, command/event integration, completion/error status, group isolation, label sanitization, stale peers, cleanup and opt-out.

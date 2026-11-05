@@ -77,6 +77,8 @@ build/
 .npm/
 npm-debug.log*
 yarn-error.log*
+# npm pack release artifacts
+*.tgz
 
 # =================================================================
 # Python
