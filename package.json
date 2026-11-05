@@ -33,6 +33,7 @@
     "index.ts",
     "src/**/*.ts",
     "README.md",
+    "README.zh-CN.md",
     "CHANGELOG.md",
     "LICENSE",
     "docs/styles-gallery.html"
