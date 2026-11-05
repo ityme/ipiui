@@ -120,7 +120,7 @@ test("information order, unknown context, cumulative totals, branch and path", (
 		usage: { input: 1200, output: 300, total: 2500, cost: 0.123 },
 	}, getThemeByName("dark"), context);
 	const splitLine = plain(splitComp.render(200)[0]);
-	const splitFields = ["[📁 ipiui dev]", "[⠿ idle", "[🤖 gemini3.8flash · high]", "[⬆️1.2k ⬇️300 💰 0.12¥]", "[CTX"];
+	const splitFields = ["[⠿ idle", "[📁 ipiui dev]", "[🤖 gemini3.8flash · high]", "[⬆️1.2k ⬇️300 💰 0.12¥]", "[CTX"];
 	let splitPos = -1;
 	for (const f of splitFields) {
 		const next = splitLine.indexOf(f);
@@ -275,7 +275,7 @@ test("preview-width split layout keeps model, thinking, telemetry and CTX pills 
 	});
 	const line = plain(component.render(140)[0]);
 	assert.equal(visibleWidth(line), 140);
-	const splitFields = ["ipiui", "dev", "running", "gemini-3.8-flash", "medium", "⬆️35.2M", "⬇️225.0k", "💰 37.99¥", "CTX"];
+	const splitFields = ["running", "ipiui", "dev", "gemini-3.8-flash", "medium", "⬆️35.2M", "⬇️225.0k", "💰 37.99¥", "CTX"];
 	let position = -1;
 	for (const field of splitFields) {
 		const next = line.indexOf(field);

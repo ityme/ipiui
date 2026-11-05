@@ -300,12 +300,12 @@ export class TopStatusBarComponent implements Component {
 		const m4RawText = `[⬆️${shortCount(usage.input)} ⬇️${shortCount(usage.output)} 💰 ${usage.cost.toFixed(2)}¥]`;
 		const m5RawText = `[CTX ${"━".repeat(ctxFilled)}${"─".repeat(ctxEmpty)} ${ctxPercent}% ${shortCount(ctxTokens)}/${shortContextWindow(ctxWindow)}]`;
 
-		// Reserve the status block; shorten the project first on narrow terminals.
-		const projectWidth = Math.min(m2Vis, Math.max(0, width - m1Vis - 1));
-		const leftStr = projectWidth > 0 ? `${truncateToWidth(m2Pill, projectWidth)} ${m1Pill}` : m1Pill;
-		const leftVis = m1Vis + (projectWidth > 0 ? projectWidth + 1 : 0);
+		// Status remains left; project/branch and telemetry are grouped on the right.
+		const leftStr = m1Pill;
+		const leftVis = m1Vis;
 
 		const rightItems: { id: string; pill: string; vis: number; priority: number; bg?: Color }[] = [
+			{ id: "proj_branch", pill: m2Pill, vis: m2Vis, priority: 4 },
 			{ id: "model_think", pill: m3RawText, vis: visibleWidth(m3RawText), priority: 3, bg: p.bgModelThink },
 			{ id: "telemetry", pill: m4RawText, vis: visibleWidth(m4RawText), priority: 2, bg: p.bgTelemetry },
 			{ id: "ctx", pill: m5RawText, vis: visibleWidth(m5RawText), priority: 1, bg: p.bgCtx },
@@ -321,7 +321,7 @@ export class TopStatusBarComponent implements Component {
 			}
 		}
 
-		// Right-side order: model/thinking, usage, context.
+		// Right-side order: project/branch, model/thinking, usage, context.
 		const visibleItems = rightItems.filter(item => activeSet.has(item.id));
 		// Build one color band across all visible telemetry blocks, including brackets and gaps.
 		const rainbowItems = visibleItems.filter(item => item.bg !== undefined);
