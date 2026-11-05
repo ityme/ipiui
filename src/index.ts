@@ -59,7 +59,7 @@ const BRAILLE_SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧",
 
 const DARK_CANVAS = rgbColor(9, 11, 16);
 const LIGHT_CANVAS = rgbColor(248, 250, 252);
-const MAX_PALETTE_CHROMA = 0.08;
+const MAX_PALETTE_CHROMA = 0.10;
 
 function softenColor(color: Color): Color {
 	const { l, c, h } = colorToOklch(color);

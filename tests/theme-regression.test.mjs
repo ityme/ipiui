@@ -187,7 +187,7 @@ test("all status-block foregrounds and backgrounds share muted saturation with r
 			["context", palette.ctxText, palette.bgCtx], ["bracket", palette.bracketColor, palette.bgModelThink],
 		];
 		for (const [name, fg, bg] of pairs) {
-			assert.ok(colorToOklch(fg).c <= 0.081, `${dark ? "dark" : "light"} ${name} chroma too high: ${colorToOklch(fg).c}`);
+			assert.ok(colorToOklch(fg).c <= 0.101, `${dark ? "dark" : "light"} ${name} chroma too high: ${colorToOklch(fg).c}`);
 			assert.ok(contrastRatio(fg, bg) >= 4.5, `${dark ? "dark" : "light"} ${name} contrast too low: ${contrastRatio(fg, bg)}`);
 		}
 	}
