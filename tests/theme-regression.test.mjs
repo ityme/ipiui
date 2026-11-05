@@ -43,7 +43,7 @@ for (const themeName of ["dark", "light", "system"]) {
 	const theme = getThemeByName(themeName);
 	assert.ok(theme);
 	for (const [status, symbol] of [
-		["idle", "idle"], ["running", "running"], ["error", "error"], ["aborted", "aborted"],
+		["idle", "idle"], ["running", "working"], ["error", "error"], ["aborted", "aborted"],
 	]) {
 		test(`${themeName}: ${status} fits narrow and wide widths with actual Pi theme`, () => {
 			const component = new TopStatusBarComponent({
@@ -63,12 +63,12 @@ for (const themeName of ["dark", "light", "system"]) {
 test("running icon animates with braille rotation", () => {
 	const theme = getThemeByName("dark");
 	const component = new TopStatusBarComponent({ status: "running", visible: true, startTime: Date.now() - 5000 }, theme, context);
-	const first = plain(component.render(200)[0]).match(/([⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]) running/)?.[1];
+	const first = plain(component.render(200)[0]).match(/([⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]) working/)?.[1];
 	let changed = false;
 	for (let i = 0; i < 8; i++) {
 		const originalNow = Date.now;
 		Date.now = () => originalNow() + i * 100;
-		const next = plain(component.render(200)[0]).match(/([⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]) running/)?.[1];
+		const next = plain(component.render(200)[0]).match(/([⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]) working/)?.[1];
 		if (next && next !== first) changed = true;
 		Date.now = originalNow;
 	}
@@ -305,7 +305,7 @@ test("preview-width split layout keeps model, thinking, telemetry and CTX pills 
 	});
 	const line = plain(component.render(140)[0]);
 	assert.equal(visibleWidth(line), 140);
-	const splitFields = ["running", "ipiui", "dev", "gemini-3.8-flash", "medium", "⬆️35.2M", "⬇️225.0k", "💰 37.99¥", "CTX"];
+	const splitFields = ["working", "ipiui", "dev", "gemini-3.8-flash", "medium", "⬆️35.2M", "⬇️225.0k", "💰 37.99¥", "CTX"];
 	let position = -1;
 	for (const field of splitFields) {
 		const next = line.indexOf(field);
@@ -401,22 +401,22 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		titles.push("overwritten-by-pi");
 		heartbeatCallbacks.at(-1)();
 		assert.equal(titles.at(-1), "api", "Heartbeat must reassert the last grouped title");
-		await emit("agent_start"); assert.ok(line().includes("running"));
+		await emit("agent_start"); assert.ok(line().includes("working"));
 		await emit("message_update", { message: { role: "assistant" }, assistantMessageEvent: { type: "thinking_start" } });
-		assert.ok(line().includes("Thinking..."));
+		assert.ok(line().includes("thinking"));
 		assert.ok(!line().includes("idle"));
 		await emit("message_update", { message: { role: "assistant" }, assistantMessageEvent: { type: "thinking_delta", delta: "hidden reasoning text" } });
-		assert.ok(line().includes("Thinking..."));
+		assert.ok(line().includes("thinking"));
 		assert.ok(!line().includes("hidden reasoning text"));
 		await emit("message_update", { message: { role: "assistant" }, assistantMessageEvent: { type: "thinking_end" } });
-		assert.ok(line().includes("running"));
+		assert.ok(line().includes("working"));
 		await emit("message_update", { message: { role: "assistant" }, assistantMessageEvent: { type: "thinking_start" } });
 		await untilTitle(title => /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]api$/.test(title));
 		await emit("tool_execution_start", { toolCallId: "a", toolName: "read" });
-		assert.ok(!line().includes("Thinking..."));
+		assert.ok(!line().includes("thinking"));
 		await emit("tool_execution_start", { toolCallId: "b", toolName: "bash" });
 		await emit("tool_execution_end", { toolCallId: "a" });
-		assert.ok(line().includes("running"));
+		assert.ok(line().includes("working"));
 		entries = [{ type: "message", message: { role: "assistant", usage: usage() } }];
 		await emit("message_end", { message: { role: "assistant", stopReason: "error", errorMessage: "429" } });
 		await emit("agent_settled", { aborted: false }); assert.ok(line().includes("error"));

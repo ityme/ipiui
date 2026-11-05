@@ -46,7 +46,7 @@ If this directory is already listed in your Pi `extensions` setting, remove that
 
 The row appears above Pi's native editor. It retains the native prompt, completion menu, paste, IME, mouse and keyboard handling. The footer is left empty. Five compact blocks show:
 
-1. Pi run status and elapsed time. During a provider's thinking stream, the status block shows `Thinking...`; it returns to `running` after thinking or tool execution starts. Providers without thinking stream events keep the normal running label.
+1. Pi run status and elapsed time. Labels are lowercase: `working` during execution, `thinking` during a provider's thinking stream, and `error` on failure. Thinking ends when the provider reports it or tool execution starts. Providers without thinking stream events keep the `working` label.
 2. Project directory and Git branch.
 3. Model and thinking level.
 4. Input/output tokens and estimated cost. The cost number is Pi's estimate; the displayed `¥` is a requested label, not currency conversion.

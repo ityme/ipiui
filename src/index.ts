@@ -285,7 +285,7 @@ export class TopStatusBarComponent implements Component {
 			elapsedSec = st.startTime ? Math.floor((now - st.startTime) / 1000) : 0;
 			const frame = BRAILLE_SPINNER[Math.floor(now / 100) % BRAILLE_SPINNER.length];
 			statusIcon = frame;
-			statusLabel = st.isThinking ? "Thinking..." : "running";
+			statusLabel = st.isThinking ? "thinking" : "working";
 			statusBg = p.bgStatusRun;
 			statusFg = p.fgStatusRun;
 		} else if (st.status === "error") {
