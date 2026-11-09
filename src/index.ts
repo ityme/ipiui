@@ -89,7 +89,8 @@ function softenPalette<T extends Record<string, Color>>(palette: T): T {
 		["fgStatusErr", "bgStatusErr"], ["fgStatusStp", "bgStatusStp"],
 		["fgProject", "bgProjBranch"], ["fgBranch", "bgProjBranch"], ["fgModel", "bgModelThink"], ["fgThinking", "bgModelThink"],
 		["fgTokenIn", "bgTelemetry"], ["fgTokenOut", "bgTelemetry"], ["fgCost", "bgTelemetry"],
-		["ctxText", "bgCtx"], ["ctxValue", "bgCtx"], ["bracketColor", "bgModelThink"],
+		["ctxText", "bgCtx"], ["ctxValue", "bgCtx"], ["ctxTrack", "bgCtx"],
+		["ctxLow", "bgCtx"], ["ctxMed", "bgCtx"], ["ctxHigh", "bgCtx"], ["bracketColor", "bgModelThink"],
 		["bracketColor", "bgProjBranch"], ["bracketColor", "bgTelemetry"], ["bracketColor", "bgCtx"],
 	] as const;
 	for (const [foregroundKey, backgroundKey] of pairs) {

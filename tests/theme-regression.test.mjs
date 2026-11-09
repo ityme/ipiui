@@ -96,12 +96,12 @@ test("fixed module colors stay static when idle; running sweep preserves text an
 			const palette = getRainbowBlockPalette(appearance === "dark");
 			for (const [text, color] of [
 				["📁 ipiui", palette.fgProject], ["dev", palette.fgBranch],
-				["🤖 gpt-6.1-sol", palette.fgModelThink], ["high", palette.fgModelThink],
+				["🤖 gpt-6.1-sol", palette.fgModel], ["high", palette.fgThinking],
 				["⬆️17.9M", palette.fgTokenIn], ["⬇️115.9k", palette.fgTokenOut], ["💰 22.52¥", palette.fgCost],
 			]) {
 				assert.deepEqual(colorToRgb(blocks.find(item => item.text === text).fg), colorToRgb(color), `${text} must use its field color`);
 			}
-			for (const item of blocks) assert.ok(contrastRatio(item.fg, item.bg) >= 4.5);
+			for (const item of blocks) assert.ok(contrastRatio(item.fg, item.bg) >= 4.5, `${appearance} idle ${item.text} contrast ${contrastRatio(item.fg, item.bg)}`);
 			assert.ok(plain(idle).includes("[📁 ipiui dev] [🤖 gpt-6.1-sol · high] [⬆️17.9M ⬇️115.9k 💰 22.52¥] [CTX"));
 			Date.now = () => 104_000;
 			assert.equal(component.render(220)[0], idle, "Idle colors must not animate");
@@ -114,13 +114,26 @@ test("fixed module colors stay static when idle; running sweep preserves text an
 				assert.equal(visibleWidth(line), 220);
 				assert.ok(plain(line).includes("[📁 ipiui dev] [🤖 gpt-6.1-sol · high]"));
 				const right = styled.slice(3);
-				for (const item of right) assert.ok(contrastRatio(item.fg, item.bg) >= 4.5);
+				for (const item of right) assert.ok(contrastRatio(item.fg, item.bg) >= 4.5, `${appearance} ${item.text} contrast ${contrastRatio(item.fg, item.bg)}`);
 				frames.push(right.map(item => colorToRgb(item.fg)));
 			}
 			assert.notDeepEqual(frames[0], frames[1]);
 			assert.notDeepEqual(frames[1], frames[2]);
 			assert.deepEqual(frames[0], frames[3], "Sweep should leave text before wrapping");
 			assert.deepEqual(frames[0], frames[4]);
+			const modelColor = blocks.find(item => item.text === "🤖 gpt-6.1-sol").fg;
+			const thinkingColor = blocks.find(item => item.text === "high").fg;
+			assert.notDeepEqual(colorToRgb(modelColor), colorToRgb(thinkingColor));
+			for (const color of [modelColor, thinkingColor]) assert.ok(contrastRatio(color, getRainbowBlockPalette(appearance === "dark").bgModelThink) >= 4.5);
+			const ctxLabel = blocks.find(item => item.text === "CTX ");
+			const ctxFilled = blocks.find(item => item.text.includes("━"));
+			const ctxTrack = blocks.find(item => item.text.includes("─"));
+			const ctxPercent = blocks.find(item => /^ \d+% $/.test(item.text));
+			const ctxTokens = blocks.find(item => item.text === "24.5k/128.0k");
+			assert.equal(JSON.stringify(colorToRgb(ctxFilled.fg)), JSON.stringify(colorToRgb(ctxPercent.fg)));
+			assert.notDeepEqual(colorToRgb(ctxTrack.fg), colorToRgb(ctxFilled.fg));
+			assert.notDeepEqual(colorToRgb(ctxTokens.fg), colorToRgb(ctxFilled.fg));
+			for (const field of [ctxLabel, ctxFilled, ctxTrack, ctxPercent, ctxTokens]) assert.ok(contrastRatio(field.fg, field.bg) >= 4.5);
 			state.status = "aborted";
 			styled.length = 0;
 			component.render(220);
@@ -205,9 +218,12 @@ test("all status-block foregrounds and backgrounds share muted saturation with r
 		for (const [fg, bg] of statusPairs) assert.ok(contrastRatio(fg, bg) >= 4.5, "Status contrast must remain readable");
 		const pairs = [
 			["project", palette.fgProject, palette.bgProjBranch], ["branch", palette.fgBranch, palette.bgProjBranch],
-			["model", palette.fgModelThink, palette.bgModelThink],
+			["model", palette.fgModel, palette.bgModelThink], ["thinking", palette.fgThinking, palette.bgModelThink],
 			["token in", palette.fgTokenIn, palette.bgTelemetry], ["token out", palette.fgTokenOut, palette.bgTelemetry], ["cost", palette.fgCost, palette.bgTelemetry],
-			["context", palette.ctxText, palette.bgCtx], ["bracket", palette.bracketColor, palette.bgModelThink],
+			["context", palette.ctxText, palette.bgCtx], ["context values", palette.ctxValue, palette.bgCtx],
+			["context track", palette.ctxTrack, palette.bgCtx], ["context low", palette.ctxLow, palette.bgCtx],
+			["context medium", palette.ctxMed, palette.bgCtx], ["context high", palette.ctxHigh, palette.bgCtx],
+			["bracket", palette.bracketColor, palette.bgModelThink],
 		];
 		for (const [name, fg, bg] of pairs) {
 			assert.ok(colorToOklch(fg).c <= 0.101, `${dark ? "dark" : "light"} ${name} chroma too high: ${colorToOklch(fg).c}`);
