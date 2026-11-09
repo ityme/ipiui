@@ -26,7 +26,7 @@ const jiti = createJiti(path.join(projectRoot, "index.ts"), {
 		"@earendil-works/pi-tui": path.join(hostRoot, "@earendil-works/pi-tui/dist/index.js"),
 	},
 });
-const { default: extension, TopStatusBarComponent, collectUsage, getRainbowBlockPalette } = jiti(path.join(projectRoot, "index.ts"));
+const { default: extension, TopStatusBarComponent, collectUsage, getRainbowBlockPalette, sweepStrength } = jiti(path.join(projectRoot, "index.ts"));
 const { TabTitleGroup, tabGroupDirectory } = jiti(path.join(projectRoot, "src/tab-title.ts"));
 const { getThemeByName, loadThemeFromPath } = await import(pathToFileURL(path.join(hostRoot,
 	"@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js")));
@@ -107,19 +107,26 @@ test("fixed module colors stay static when idle; running sweep preserves text an
 			assert.equal(component.render(220)[0], idle, "Idle colors must not animate");
 			state.status = "running";
 			const frames = [];
-			for (const time of [0, 1000, 4000, 7999, 8000]) {
+			let baseFields;
+			for (const time of [0, 1000, 3000, 4500, 5000]) {
 				Date.now = () => 100_000 + time;
 				styled.length = 0;
 				const line = component.render(220)[0];
 				assert.equal(visibleWidth(line), 220);
 				assert.ok(plain(line).includes("[📁 ipiui dev] [🤖 gpt-6.1-sol · high]"));
 				const right = styled.slice(3);
-				for (const item of right) assert.ok(contrastRatio(item.fg, item.bg) >= 4.5, `${appearance} ${item.text} contrast ${contrastRatio(item.fg, item.bg)}`);
+				if (time === 0) baseFields = right.map(item => colorToOklch(item.fg));
+				for (const [index, item] of right.entries()) {
+					assert.ok(contrastRatio(item.fg, item.bg) >= 4.5, `${appearance} ${item.text} contrast ${contrastRatio(item.fg, item.bg)}`);
+					const current = colorToOklch(item.fg);
+					assert.equal(current.h, baseFields[index].h, "Chase preserves the original hue");
+					assert.equal(current.c, baseFields[index].c, "Chase preserves the original chroma");
+				}
 				frames.push(right.map(item => colorToRgb(item.fg)));
 			}
 			assert.notDeepEqual(frames[0], frames[1]);
 			assert.notDeepEqual(frames[1], frames[2]);
-			assert.deepEqual(frames[0], frames[3], "Sweep should leave text before wrapping");
+			assert.deepEqual(frames[0], frames[3], "Pause restores base colors before wrapping");
 			assert.deepEqual(frames[0], frames[4]);
 			const modelColor = blocks.find(item => item.text === "🤖 gpt-6.1-sol").fg;
 			const thinkingStart = blocks.findIndex(item => item.text === "🤖 gpt-6.1-sol") + 2;
@@ -145,6 +152,23 @@ test("fixed module colors stay static when idle; running sweep preserves text an
 			assert.deepEqual(styled.slice(3).map(item => colorToRgb(item.fg)), blocks.map(item => colorToRgb(item.fg)));
 		}
 	} finally { Date.now = originalNow; }
+});
+
+test("chase has a bright head, a fading left tail, rightward travel and a pause", () => {
+	const width = 100;
+	const timeAtEdge = edge => (edge + 0.5) / (width + 8.5) * 4500;
+	const time = timeAtEdge(40);
+	assert.ok(sweepStrength(39, width, time) > 0.99);
+	assert.ok(sweepStrength(37, width, time) > sweepStrength(34, width, time));
+	assert.equal(sweepStrength(41, width, time), 0, "No light ahead of the head");
+	assert.equal(sweepStrength(31, width, time), 0, "Tail is bounded");
+	assert.ok(sweepStrength(59, width, timeAtEdge(60)) > 0.99);
+	assert.equal(sweepStrength(39, width, timeAtEdge(60)), 0);
+	for (const column of [0, 40, 99]) {
+		assert.equal(sweepStrength(column, width, 4500), 0);
+		assert.equal(sweepStrength(column, width, 4999), 0);
+		assert.equal(sweepStrength(column, width, 5000), 0);
+	}
 });
 
 test("long project labels preserve status and terminal width", () => {

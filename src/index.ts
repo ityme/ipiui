@@ -68,15 +68,30 @@ function softenColor(color: Color): Color {
 }
 
 const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-const SWEEP_PERIOD_MS = 8000;
-const SWEEP_RADIUS = 8;
+const SWEEP_PERIOD_MS = 5000;
+const SWEEP_TRAVEL_MS = 4500;
+const SWEEP_HEAD_COLUMNS = 2.5;
+const SWEEP_TAIL_COLUMNS = 5.5;
 
-function sweepStrength(column: number, width: number, elapsedMs: number): number {
-	// Start and end outside the text so the repeating sweep has no visible jump.
-	const phase = ((elapsedMs % SWEEP_PERIOD_MS) + SWEEP_PERIOD_MS) % SWEEP_PERIOD_MS / SWEEP_PERIOD_MS;
-	const center = -SWEEP_RADIUS + phase * (width + SWEEP_RADIUS * 2);
-	const strength = Math.max(0, 1 - Math.abs(column - center) / SWEEP_RADIUS);
-	return strength * strength * (3 - 2 * strength);
+export function sweepStrength(column: number, width: number, elapsedMs: number): number {
+	const phaseMs = ((elapsedMs % SWEEP_PERIOD_MS) + SWEEP_PERIOD_MS) % SWEEP_PERIOD_MS;
+	if (phaseMs >= SWEEP_TRAVEL_MS) return 0;
+	const span = SWEEP_HEAD_COLUMNS + SWEEP_TAIL_COLUMNS;
+	// The leading edge moves right; all of the fading tail stays behind it on the left.
+	const edge = -0.5 + phaseMs / SWEEP_TRAVEL_MS * (width + span + 0.5);
+	const distance = edge - column;
+	if (distance <= 0 || distance >= span) return 0;
+	const smooth = (value: number) => value * value * (3 - 2 * value);
+	if (distance <= SWEEP_HEAD_COLUMNS) return smooth(Math.min(1, distance / 0.6));
+	return 1 - smooth((distance - SWEEP_HEAD_COLUMNS) / SWEEP_TAIL_COLUMNS);
+}
+
+function chaseColor(base: Color, strength: number, isDark: boolean): Color {
+	if (strength <= 0) return base;
+	const { l, c, h } = colorToOklch(base);
+	// Preserve each field's hue/chroma. Light backgrounds use stronger ink instead of white glare.
+	const lightness = isDark ? Math.min(0.94, l + 0.11 * strength) : Math.max(0.2, l - 0.08 * strength);
+	return oklchColor(lightness, c, h);
 }
 
 function softenPalette<T extends Record<string, Color>>(palette: T): T {
@@ -395,7 +410,6 @@ export class TopStatusBarComponent implements Component {
 				.map(part => ({ text: part.segment, width: visibleWidth(part.segment), field: fieldIndex }))));
 		}
 		const elapsedMs = now - (st.startTime ?? now);
-		const highlight = isDark ? rgbColor(232, 238, 245) : rgbColor(27, 36, 52);
 		let column = 0;
 		const orderedRight = visibleItems.map((item, index) => {
 			if (st.status !== "running") return item.fields.map(field => this.theme.style(field.text, { fg: field.fg, bg: item.bg, bold: true })).join("");
@@ -403,7 +417,7 @@ export class TopStatusBarComponent implements Component {
 				const strength = sweepStrength(column + letter.width / 2, rightVis, elapsedMs);
 				column += letter.width;
 				const base = item.fields[letter.field].fg;
-				const fg = strength > 0 ? mixColors(base, highlight, strength * 0.75, "srgb") : base;
+				const fg = chaseColor(base, strength, isDark);
 				return this.theme.style(letter.text, { fg, bg: item.bg, bold: true });
 			}).join("");
 			column++;
