@@ -159,13 +159,13 @@ export function getRainbowBlockPalette(isDark: boolean) {
 			fgTokenOut: rgbColor(52, 211, 153),
 			fgCost: rgbColor(251, 191, 36),
 
-			// 模块 5: CTX 进度 (深石板灰微光底)
-			bgCtx: mixColors(DARK_CANVAS, rgbColor(99, 102, 241), 0.18, "srgb"),
-			ctxLow: rgbColor(45, 212, 191),
-			ctxMed: rgbColor(251, 191, 36),
-			ctxHigh: rgbColor(249, 115, 22),
-			ctxTrack: rgbColor(148, 163, 184),
-			ctxText: rgbColor(155, 185, 214),
+			// 模块 5: CTX 进度 (克制青蓝灰底)
+			bgCtx: mixColors(DARK_CANVAS, rgbColor(91, 125, 143), 0.18, "srgb"),
+			ctxLow: rgbColor(103, 166, 171),
+			ctxMed: rgbColor(190, 151, 91),
+			ctxHigh: rgbColor(183, 112, 105),
+			ctxTrack: rgbColor(126, 143, 155),
+			ctxText: rgbColor(169, 190, 201),
 
 			bracketColor: rgbColor(148, 163, 184),
 		});
@@ -193,12 +193,12 @@ export function getRainbowBlockPalette(isDark: boolean) {
 			fgTokenOut: rgbColor(5, 150, 105),
 			fgCost: rgbColor(180, 83, 9),
 
-			bgCtx: mixColors(LIGHT_CANVAS, rgbColor(224, 231, 255), 0.25, "srgb"),
-			ctxLow: rgbColor(13, 148, 136),
-			ctxMed: rgbColor(180, 83, 9),
-			ctxHigh: rgbColor(194, 65, 12),
-			ctxTrack: rgbColor(148, 163, 184),
-			ctxText: rgbColor(59, 88, 119),
+			bgCtx: mixColors(LIGHT_CANVAS, rgbColor(220, 230, 233), 0.32, "srgb"),
+			ctxLow: rgbColor(49, 117, 121),
+			ctxMed: rgbColor(139, 101, 45),
+			ctxHigh: rgbColor(145, 76, 69),
+			ctxTrack: rgbColor(133, 153, 162),
+			ctxText: rgbColor(66, 91, 102),
 
 			bracketColor: rgbColor(100, 116, 139),
 		});
