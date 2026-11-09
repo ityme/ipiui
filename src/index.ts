@@ -90,6 +90,7 @@ function softenPalette<T extends Record<string, Color>>(palette: T): T {
 		["fgProject", "bgProjBranch"], ["fgBranch", "bgProjBranch"], ["fgModelThink", "bgModelThink"],
 		["fgTokenIn", "bgTelemetry"], ["fgTokenOut", "bgTelemetry"], ["fgCost", "bgTelemetry"],
 		["ctxText", "bgCtx"], ["bracketColor", "bgModelThink"],
+		["bracketColor", "bgProjBranch"], ["bracketColor", "bgTelemetry"], ["bracketColor", "bgCtx"],
 	] as const;
 	for (const [foregroundKey, backgroundKey] of pairs) {
 		const foreground = palette[foregroundKey as keyof T];
@@ -247,7 +248,7 @@ function formatDuration(sec: number): string {
 
 export class TopStatusBarComponent implements Component {
 	private blockText = "";
-	private blockLetters: { text: string; width: number }[][] = [];
+	private blockLetters: { text: string; width: number; field: number }[][] = [];
 
 	constructor(private state: TopBarState, private theme: Theme, private context: ExtensionContext) {}
 
@@ -346,11 +347,17 @@ export class TopStatusBarComponent implements Component {
 		const leftStr = m1Pill;
 		const leftVis = m1Vis;
 
-		const rightItems: { id: string; pill: string; vis: number; priority: number; fg: Color; bg: Color }[] = [
-			{ id: "proj_branch", pill: m2RawText, vis: m2Vis, priority: 4, fg: p.fgBranch, bg: p.bgProjBranch },
-			{ id: "model_think", pill: m3RawText, vis: visibleWidth(m3RawText), priority: 3, fg: p.fgModelThink, bg: p.bgModelThink },
-			{ id: "telemetry", pill: m4RawText, vis: visibleWidth(m4RawText), priority: 2, fg: p.fgTokenOut, bg: p.bgTelemetry },
-			{ id: "ctx", pill: m5RawText, vis: visibleWidth(m5RawText), priority: 1, fg: p.ctxText, bg: p.bgCtx },
+		const muted = (text: string) => ({ text, fg: p.bracketColor });
+		const rightItems = [
+			{ id: "proj_branch", pill: m2RawText, vis: m2Vis, priority: 4, bg: p.bgProjBranch,
+				fields: [muted("["), { text: `📁 ${cwdBasename}`, fg: p.fgProject }, muted(" "), { text: `${branch}`, fg: p.fgBranch }, muted("]")] },
+			{ id: "model_think", pill: m3RawText, vis: visibleWidth(m3RawText), priority: 3, bg: p.bgModelThink,
+				fields: [muted("["), { text: `🤖 ${model}`, fg: p.fgModelThink }, muted(" · "), { text: thinkFull, fg: p.fgModelThink }, muted("]")] },
+			{ id: "telemetry", pill: m4RawText, vis: visibleWidth(m4RawText), priority: 2, bg: p.bgTelemetry,
+				fields: [muted("["), { text: `⬆️${shortCount(usage.input)}`, fg: p.fgTokenIn }, muted(" "),
+					{ text: `⬇️${shortCount(usage.output)}`, fg: p.fgTokenOut }, muted(" "), { text: `💰 ${usage.cost.toFixed(2)}¥`, fg: p.fgCost }, muted("]")] },
+			{ id: "ctx", pill: m5RawText, vis: visibleWidth(m5RawText), priority: 1, bg: p.bgCtx,
+				fields: [muted("["), { text: m5RawText.slice(1, -1), fg: p.ctxText }, muted("]")] },
 		];
 
 		const activeSet = new Set<string>();
@@ -368,18 +375,19 @@ export class TopStatusBarComponent implements Component {
 		const blockText = visibleItems.map(item => item.pill).join(" ");
 		if (blockText !== this.blockText) {
 			this.blockText = blockText;
-			this.blockLetters = visibleItems.map(item => [...GRAPHEME_SEGMENTER.segment(item.pill)]
-				.map(part => ({ text: part.segment, width: visibleWidth(part.segment) })));
+			this.blockLetters = visibleItems.map(item => item.fields.flatMap((field, fieldIndex) => [...GRAPHEME_SEGMENTER.segment(field.text)]
+				.map(part => ({ text: part.segment, width: visibleWidth(part.segment), field: fieldIndex }))));
 		}
 		const elapsedMs = now - (st.startTime ?? now);
 		const highlight = isDark ? rgbColor(232, 238, 245) : rgbColor(27, 36, 52);
 		let column = 0;
 		const orderedRight = visibleItems.map((item, index) => {
-			if (st.status !== "running") return this.theme.style(item.pill, { fg: item.fg, bg: item.bg, bold: true });
+			if (st.status !== "running") return item.fields.map(field => this.theme.style(field.text, { fg: field.fg, bg: item.bg, bold: true })).join("");
 			const text = this.blockLetters[index].map(letter => {
 				const strength = sweepStrength(column + letter.width / 2, rightVis, elapsedMs);
 				column += letter.width;
-				const fg = strength > 0 ? mixColors(item.fg, highlight, strength * 0.75, "srgb") : item.fg;
+				const base = item.fields[letter.field].fg;
+				const fg = strength > 0 ? mixColors(base, highlight, strength * 0.75, "srgb") : base;
 				return this.theme.style(letter.text, { fg, bg: item.bg, bold: true });
 			}).join("");
 			column++;

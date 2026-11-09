@@ -92,8 +92,16 @@ test("fixed module colors stay static when idle; running sweep preserves text an
 			const component = new TopStatusBarComponent(state, theme, context);
 			Date.now = () => 100_000;
 			const idle = component.render(220)[0];
-			const blocks = styled.slice(-4);
-			assert.equal(new Set(blocks.map(item => JSON.stringify(colorToRgb(item.fg)))).size, 4);
+			const blocks = styled.slice(3);
+			const palette = getRainbowBlockPalette(appearance === "dark");
+			for (const [text, color] of [
+				["📁 ipiui", palette.fgProject], ["dev", palette.fgBranch],
+				["🤖 gpt-6.1-sol", palette.fgModelThink], ["high", palette.fgModelThink],
+				["⬆️17.9M", palette.fgTokenIn], ["⬇️115.9k", palette.fgTokenOut], ["💰 22.52¥", palette.fgCost],
+			]) {
+				assert.deepEqual(colorToRgb(blocks.find(item => item.text === text).fg), colorToRgb(color), `${text} must use its field color`);
+			}
+			for (const item of blocks) assert.ok(contrastRatio(item.fg, item.bg) >= 4.5);
 			assert.ok(plain(idle).includes("[📁 ipiui dev] [🤖 gpt-6.1-sol · high] [⬆️17.9M ⬇️115.9k 💰 22.52¥] [CTX"));
 			Date.now = () => 104_000;
 			assert.equal(component.render(220)[0], idle, "Idle colors must not animate");
@@ -116,7 +124,7 @@ test("fixed module colors stay static when idle; running sweep preserves text an
 			state.status = "aborted";
 			styled.length = 0;
 			component.render(220);
-			assert.deepEqual(styled.slice(-4).map(item => colorToRgb(item.fg)), blocks.map(item => colorToRgb(item.fg)));
+			assert.deepEqual(styled.slice(3).map(item => colorToRgb(item.fg)), blocks.map(item => colorToRgb(item.fg)));
 		}
 	} finally { Date.now = originalNow; }
 });
