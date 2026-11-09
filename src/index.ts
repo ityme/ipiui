@@ -715,19 +715,27 @@ export default function (pi: ExtensionAPI) {
 	});
 	const showPanel = async (ctx: ExtensionContext) => {
 		while (true) {
-			const choices = [
-				`${t(state.visible ? "hide" : "show")} · ${enabledText(state.visible)}`,
-				`${t("paneName")} · ${paneLabel} · ${t(customPaneLabel ? "custom" : "projectDirectory")}`,
-				`${t("titleSync")} · ${enabledText(!!groupName)}${groupName ? ` · ${groupName}` : ""}`,
-				`${t("theme")} · ${state.theme ?? "chase"}`,
-				`${t("language")} · ${languageName(language)}`,
-				t("help"),
+			const rows = [
+				[t("language"), languageName(language)],
+				[t("topBar"), enabledText(state.visible)],
+				[t("paneName"), `${paneLabel} (${t(customPaneLabel ? "custom" : "projectDirectory")})`],
+				[t("titleSync"), groupName ? `${enabledText(true)} (${groupName})` : enabledText(false)],
+				[t("theme"), t(state.theme === "rainbow" ? "rainbowName" : "chaseName")],
+				[t("helpLabel"), t("helpValue")],
 			];
+			const labelWidth = Math.max(...rows.map(([label]) => visibleWidth(label)));
+			const choices = rows.map(([label, value]) => `${label}${" ".repeat(labelWidth - visibleWidth(label))} : ${singleLine(value)}`);
 			const choice = await ctx.ui.select(t("settings"), choices);
 			if (!choice) return;
 			if (choice === choices[0]) {
-				await handleCommand("toggle", ctx);
+				// Keep native language names recognizable in either panel language.
+				const languages = ["English", "简体中文", t("back")];
+				const selected = await ctx.ui.select(t("languagePrompt"), languages);
+				if (selected === languages[0]) await handleCommand("language en", ctx);
+				if (selected === languages[1]) await handleCommand("language zh", ctx);
 			} else if (choice === choices[1]) {
+				await handleCommand("toggle", ctx);
+			} else if (choice === choices[2]) {
 				const actions = [t("setName"), t("resetName"), t("back")];
 				const action = await ctx.ui.select(`${t("paneName")} · ${paneLabel}`, actions);
 				if (action === actions[1]) await handleCommand("name reset", ctx);
@@ -735,7 +743,7 @@ export default function (pi: ExtensionAPI) {
 					const name = await ctx.ui.input(t("namePrompt"), paneLabel);
 					if (name?.trim()) await handleCommand(`name ${name}`, ctx);
 				}
-			} else if (choice === choices[2]) {
+			} else if (choice === choices[3]) {
 				const actions = [t(groupName ? "syncOff" : "syncOn"), t("changeGroup"), t("defaultGroup"), t("back")];
 				const action = await ctx.ui.select(t("groupHint"), actions);
 				if (action === actions[0]) await handleCommand(`group ${groupName ? "off" : defaultGroupName}`, ctx);
@@ -744,17 +752,11 @@ export default function (pi: ExtensionAPI) {
 					const group = await ctx.ui.input(t("groupPrompt"), groupName ?? defaultGroupName);
 					if (group?.trim()) await handleCommand(`group ${group}`, ctx);
 				}
-			} else if (choice === choices[3]) {
+			} else if (choice === choices[4]) {
 				const themes = [t("chase"), t("rainbow"), t("back")];
 				const selected = await ctx.ui.select(`${t("theme")} · ${state.theme ?? "chase"}`, themes);
 				if (selected === themes[0]) await handleCommand("theme chase", ctx);
 				if (selected === themes[1]) await handleCommand("theme rainbow", ctx);
-			} else if (choice === choices[4]) {
-				// Native language names stay recognizable even when the active language is unfamiliar.
-				const languages = ["English", "简体中文", t("back")];
-				const selected = await ctx.ui.select(t("languagePrompt"), languages);
-				if (selected === languages[0]) await handleCommand("language en", ctx);
-				if (selected === languages[1]) await handleCommand("language zh", ctx);
 			} else if (choice === choices[5]) {
 				await handleCommand("help", ctx);
 				return;

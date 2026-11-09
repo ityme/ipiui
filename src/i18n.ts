@@ -1,7 +1,8 @@
 export type PanelLanguage = "en" | "zh";
 
 const en = {
-	settings: "ipiui settings · ↑/↓ select · Enter confirm · Esc close",
+	settings: "ipiui · Settings  |  Enter: select  Esc: close",
+	chaseName: "Chase", rainbowName: "Rainbow", helpLabel: "Help", helpValue: "Command shortcuts",
 	hide: "Hide status row", show: "Show status row", on: "On", off: "Off",
 	paneName: "Pane name", custom: "Custom", projectDirectory: "Project directory",
 	titleSync: "Title sync", theme: "Theme", language: "Language", help: "Help and command shortcuts",
@@ -41,7 +42,8 @@ const en = {
 
 type MessageKey = keyof typeof en;
 const zh: Record<MessageKey, string> = {
-	settings: "ipiui 设置 · ↑/↓ 选择 · Enter 确认 · Esc 关闭",
+	settings: "ipiui · 设置  |  Enter 选择  Esc 关闭",
+	chaseName: "追光", rainbowName: "彩虹", helpLabel: "帮助", helpValue: "快捷命令",
 	hide: "隐藏状态栏", show: "显示状态栏", on: "已开启", off: "已关闭",
 	paneName: "窗格名称", custom: "自定义", projectDirectory: "项目目录",
 	titleSync: "标题同步", theme: "主题", language: "语言", help: "帮助与快捷命令",
