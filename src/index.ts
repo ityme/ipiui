@@ -212,6 +212,9 @@ export function getRainbowBlockPalette(isDark: boolean) {
 
 const DARK_PALETTE = getRainbowBlockPalette(true);
 const LIGHT_PALETTE = getRainbowBlockPalette(false);
+const THINKING_HUES = [25, 85, 155, 235, 300, 55, 190, 265, 340, 115];
+const DARK_THINKING_COLORS = THINKING_HUES.map(hue => ensureTextContrast(oklchColor(0.82, 0.10, hue), DARK_PALETTE.bgModelThink));
+const LIGHT_THINKING_COLORS = THINKING_HUES.map(hue => ensureTextContrast(oklchColor(0.43, 0.10, hue), LIGHT_PALETTE.bgModelThink));
 
 function singleLine(text: string): string {
 	return stripTerminalSequences(text).replace(/[\x00-\x1f\x7f-\x9f]/g, " ").replace(/ +/g, " ").trim();
@@ -345,6 +348,10 @@ export class TopStatusBarComponent implements Component {
 
 		const rawThink = (st.thinkingLevel ?? "med").toLowerCase();
 		const thinkFull = rawThink === "med" ? "medium" : rawThink;
+		const thinkingColors = isDark ? DARK_THINKING_COLORS : LIGHT_THINKING_COLORS;
+		const thinkingFields = [...GRAPHEME_SEGMENTER.segment(thinkFull)].map((part, index) => ({
+			text: part.segment, fg: thinkingColors[index % thinkingColors.length],
+		}));
 		const m3RawText = `[🤖 ${model} · ${thinkFull}]`;
 		const m4RawText = `[⬆️${shortCount(usage.input)} ⬇️${shortCount(usage.output)} 💰 ${usage.cost.toFixed(2)}¥]`;
 		const m5RawText = `[CTX ${"━".repeat(ctxFilled)}${"─".repeat(ctxEmpty)} ${ctxPercent}% ${shortCount(ctxTokens)}/${shortContextWindow(ctxWindow)}]`;
@@ -358,7 +365,7 @@ export class TopStatusBarComponent implements Component {
 			{ id: "proj_branch", pill: m2RawText, vis: m2Vis, priority: 4, bg: p.bgProjBranch,
 				fields: [muted("["), { text: `📁 ${cwdBasename}`, fg: p.fgProject }, muted(" "), { text: `${branch}`, fg: p.fgBranch }, muted("]")] },
 			{ id: "model_think", pill: m3RawText, vis: visibleWidth(m3RawText), priority: 3, bg: p.bgModelThink,
-				fields: [muted("["), { text: `🤖 ${model}`, fg: p.fgModel }, muted(" · "), { text: thinkFull, fg: p.fgThinking }, muted("]")] },
+				fields: [muted("["), { text: `🤖 ${model}`, fg: p.fgModel }, muted(" · "), ...thinkingFields, muted("]")] },
 			{ id: "telemetry", pill: m4RawText, vis: visibleWidth(m4RawText), priority: 2, bg: p.bgTelemetry,
 				fields: [muted("["), { text: `⬆️${shortCount(usage.input)}`, fg: p.fgTokenIn }, muted(" "),
 					{ text: `⬇️${shortCount(usage.output)}`, fg: p.fgTokenOut }, muted(" "), { text: `💰 ${usage.cost.toFixed(2)}¥`, fg: p.fgCost }, muted("]")] },

@@ -96,7 +96,7 @@ test("fixed module colors stay static when idle; running sweep preserves text an
 			const palette = getRainbowBlockPalette(appearance === "dark");
 			for (const [text, color] of [
 				["📁 ipiui", palette.fgProject], ["dev", palette.fgBranch],
-				["🤖 gpt-6.1-sol", palette.fgModel], ["high", palette.fgThinking],
+				["🤖 gpt-6.1-sol", palette.fgModel],
 				["⬆️17.9M", palette.fgTokenIn], ["⬇️115.9k", palette.fgTokenOut], ["💰 22.52¥", palette.fgCost],
 			]) {
 				assert.deepEqual(colorToRgb(blocks.find(item => item.text === text).fg), colorToRgb(color), `${text} must use its field color`);
@@ -122,9 +122,14 @@ test("fixed module colors stay static when idle; running sweep preserves text an
 			assert.deepEqual(frames[0], frames[3], "Sweep should leave text before wrapping");
 			assert.deepEqual(frames[0], frames[4]);
 			const modelColor = blocks.find(item => item.text === "🤖 gpt-6.1-sol").fg;
-			const thinkingColor = blocks.find(item => item.text === "high").fg;
-			assert.notDeepEqual(colorToRgb(modelColor), colorToRgb(thinkingColor));
-			for (const color of [modelColor, thinkingColor]) assert.ok(contrastRatio(color, getRainbowBlockPalette(appearance === "dark").bgModelThink) >= 4.5);
+			const thinkingStart = blocks.findIndex(item => item.text === "🤖 gpt-6.1-sol") + 2;
+			const thinkingLetters = blocks.slice(thinkingStart, thinkingStart + 4);
+			assert.equal(thinkingLetters.map(item => item.text).join(""), "high");
+			assert.equal(new Set(thinkingLetters.map(item => JSON.stringify(colorToRgb(item.fg)))).size, 4);
+			for (const item of thinkingLetters) {
+				assert.notDeepEqual(colorToRgb(modelColor), colorToRgb(item.fg));
+				assert.ok(contrastRatio(item.fg, item.bg) >= 4.5);
+			}
 			const ctxLabel = blocks.find(item => item.text === "CTX ");
 			const ctxFilled = blocks.find(item => item.text.includes("━"));
 			const ctxTrack = blocks.find(item => item.text.includes("─"));
