@@ -56,6 +56,13 @@ The row appears above Pi's native editor. It retains the native prompt, completi
 
 Right-side fields use fixed colors: soft yellow for project, pale blue for branch and input tokens, muted blue-gray for model names, a distinct fixed color per letter for thinking levels, soft green for output tokens, and gold for cost. Context labels use teal-gray, the empty track is muted, and token counts use a separate neutral tone. The filled bar and percentage use teal through 60%, amber above 60%, and coral above 80%. Brackets and separators are neutral gray. Each icon receives the same ANSI foreground as its associated text; color emoji may retain their font-defined colors. During working/thinking, a 2–3-column highlight head travels left to right across all visible right-side fields, followed by a 4–6-column fading tail. It travels for 4.5 seconds, pauses for 0.5 seconds, then repeats. The effect preserves each field's hue and chroma (including the multicolor thinking letters), changing only lightness; light appearance uses stronger ink for contrast. Idle, error and aborted states stay static. Semantic status colors remain vivid, while idle stays neutral gray. Foreground colors preserve WCAG AA text contrast in dark and light appearances. Narrow terminals hide blocks by priority instead of overflowing.
 
+## Themes
+
+- **`chase` (default):** fixed field colors, multicolor thinking letters and the running highlight chase described above.
+- **`rainbow`:** a continuous seven-color band across the project, model, usage and context blocks. It flows while working/thinking and freezes at idle. It uses the same layout and backgrounds, with no chase overlay.
+
+Choose a theme in `/ipiui` → `Theme(主题)`, or run `/ipiui theme chase` / `/ipiui theme rainbow`. `/ipiui theme` shows the selected theme. The choice is stored in the active Pi session branch, restored on `/reload` or resuming that session, and follows `/tree` navigation. It does not change Pi's global theme or other sessions.
+
 ## Commands
 
 Run `/ipiui` to open the interactive settings panel. Use the arrow keys to choose an action, Enter to confirm and Esc to cancel or go back.
@@ -65,6 +72,7 @@ The panel lets you:
 - Show or hide the status row (for example, `Hide status row(隐藏状态栏)`).
 - Set a custom pane name or reset it to the project directory name.
 - Enable/disable title synchronization or switch groups.
+- Choose the Chase or Rainbow theme.
 - View help.
 
 Direct commands are also available:
@@ -76,6 +84,7 @@ Direct commands are also available:
 | `/ipiui name reset` | Follow the project directory name again |
 | `/ipiui group NAME` | Join or switch the shared title group |
 | `/ipiui group off` | Disable title synchronization |
+| `/ipiui theme [chase|rainbow]` | View or change the status row theme |
 | `/ipiui status`, `/ipiui help` | Show current settings or command help |
 
 Compatibility aliases remain available: `/topbar`, `/tabname` and `/tabgroup`.

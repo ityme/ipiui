@@ -154,6 +154,42 @@ test("fixed module colors stay static when idle; running sweep preserves text an
 	} finally { Date.now = originalNow; }
 });
 
+test("rainbow theme spans visible blocks, animates while running, freezes at idle and switches cleanly", () => {
+	const originalNow = Date.now;
+	try {
+		for (const appearance of ["dark", "light"]) {
+			const styled = [];
+			const baseTheme = getThemeByName(appearance);
+			const theme = Object.create(baseTheme);
+			theme.style = (text, options) => { styled.push({ text, ...options }); return baseTheme.style(text, options); };
+			const state = { theme: "rainbow", status: "idle", visible: true, startTime: 100_000,
+				modelId: "中文👨‍👩‍👧‍👦e\u0301", thinkingLevel: "medium", cwd: "I:/ipiui", gitBranch: "dev" };
+			const component = new TopStatusBarComponent(state, theme, context);
+			Date.now = () => 100_000;
+			const idle = component.render(220)[0];
+			const idleFields = styled.slice(3);
+			assert.ok(new Set(idleFields.map(item => JSON.stringify(colorToRgb(item.fg)))).size > 12);
+			for (const field of idleFields) assert.ok(contrastRatio(field.fg, field.bg) >= 4.5);
+			Date.now = () => 101_000;
+			assert.equal(component.render(220)[0], idle);
+			state.status = "running";
+			styled.length = 0;
+			const first = component.render(220)[0];
+			for (const field of styled.slice(3)) assert.ok(contrastRatio(field.fg, field.bg) >= 4.5);
+			Date.now = () => 102_000;
+			assert.notEqual(component.render(220)[0], first);
+			state.status = "idle";
+			state.theme = "chase";
+			const chase = component.render(220)[0];
+			assert.equal(plain(chase), plain(idle));
+			assert.notEqual(chase, idle);
+			state.theme = "rainbow";
+			assert.equal(component.render(220)[0], idle);
+			for (const width of [1, 8, 40, 80, 140, 220]) assert.equal(visibleWidth(component.render(width)[0]), width);
+		}
+	} finally { Date.now = originalNow; }
+});
+
 test("chase has a bright head, a fading left tail, rightward travel and a pause", () => {
 	const width = 100;
 	const timeAtEdge = edge => (edge + 0.5) / (width + 8.5) * 4500;
@@ -413,7 +449,7 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 	const ctx = {
 		...context, mode: "tui", isIdle: () => true,
 		model: { id: "relay/gemini3.8flash", provider: "test" }, thinkingLevel: "high",
-		sessionManager: { getEntries: () => entries },
+		sessionManager: { getEntries: () => entries, getBranch: () => entries },
 		ui: {
 			theme: getThemeByName("dark"), notify() {},
 			setTitle(title) { titles.push(title); },
@@ -543,11 +579,12 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 	process.env.IPIUI_TEST_GROUP_ROOT = root;
 	process.env.IPIUI_GROUP = "review";
 	const handlers = new Map(), commands = new Map(), titles = [], notices = [];
+	const entries = [];
 	const selections = [], answers = [], prompts = [];
 	let renderRequests = 0;
 	const ctx = {
 		...context, mode: "tui", isIdle: () => true,
-		sessionManager: { getEntries: () => [] },
+		sessionManager: { getEntries: () => entries, getBranch: () => entries },
 		ui: { setTitle: title => titles.push(title), notify: text => notices.push(text),
 			select: async (title, choices) => {
 				prompts.push({ title, choices });
@@ -561,7 +598,8 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 			}, setEditorComponent() {} },
 	};
 	extension({ on: (name, handler) => handlers.set(name, handler),
-		registerCommand: (name, command) => commands.set(name, command) });
+		registerCommand: (name, command) => commands.set(name, command),
+		appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }) });
 	const emit = (name, event = {}) => handlers.get(name)(event, ctx);
 	const command = args => commands.get("ipiui").handler(args, ctx);
 	const peer = new TabTitleGroup({ root, intervalMs: 60_000, onTitle() {}, onError: error => { throw error; } });
@@ -618,6 +656,27 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 		await command("");
 		await command("group");
 		assert.match(notices.at(-1), /review/);
+		selections.push(3, 1, undefined);
+		await command("");
+		assert.deepEqual(entries.at(-1).data, { theme: "rainbow" });
+		await command("status");
+		assert.match(notices.at(-1), /Theme: rainbow/);
+		await emit("session_start");
+		await command("theme");
+		assert.match(notices.at(-1), /Theme: rainbow/);
+		await command("theme unsupported");
+		assert.match(notices.at(-1), /Unknown theme/);
+		await command("theme chase");
+		assert.deepEqual(entries.at(-1).data, { theme: "chase" });
+		const latest = entries.pop();
+		await emit("session_tree");
+		await command("theme");
+		assert.match(notices.at(-1), /Theme: rainbow/);
+		entries.push(latest);
+		await emit("session_tree");
+		await command("theme");
+		assert.match(notices.at(-1), /Theme: chase/);
+		assert.ok(commands.get("ipiui").getArgumentCompletions("theme r").some(item => item.value === "theme rainbow"));
 		await command("group bad" + String.fromCharCode(10) + "name");
 		assert.match(notices.at(-1), /no control characters/);
 		await emit("agent_start");
@@ -658,7 +717,7 @@ test("invalid startup group does not prevent the extension from starting", async
 	extension({ on: (name, handler) => handlers.set(name, handler), registerCommand() {} });
 	try {
 		await handlers.get("session_start")({}, {
-			...context, mode: "tui", isIdle: () => true, sessionManager: { getEntries: () => [] },
+			...context, mode: "tui", isIdle: () => true, sessionManager: { getEntries: () => [], getBranch: () => [] },
 			ui: { notify: text => notices.push(text), setWorkingVisible() {}, setFooter() {}, setWidget() {}, setEditorComponent() {} },
 		});
 		assert.ok(notices.some(text => text.includes("could not join title group")));

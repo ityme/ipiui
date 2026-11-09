@@ -15,6 +15,7 @@ import {
 } from "@earendil-works/pi-tui";
 
 export type StatusBarStyle = "rainbow_blocks" | "classic" | "border";
+export type StatusRowTheme = "chase" | "rainbow";
 
 export interface TopBarState {
 	status: "idle" | "running" | "error" | "aborted";
@@ -29,6 +30,7 @@ export interface TopBarState {
 	cwd?: string;
 	visible: boolean;
 	style: StatusBarStyle;
+	theme?: StatusRowTheme;
 	usage?: UsageTotals;
 }
 
@@ -68,6 +70,19 @@ function softenColor(color: Color): Color {
 }
 
 const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+const RAINBOW_STOPS = [
+	rgbColor(255, 110, 130), rgbColor(255, 175, 80), rgbColor(245, 220, 80),
+	rgbColor(80, 220, 140), rgbColor(60, 200, 245), rgbColor(140, 150, 250), rgbColor(215, 130, 240),
+].map(softenColor);
+
+function rainbowColors(background: Color): Color[] {
+	return Array.from({ length: 128 }, (_, index) => {
+		const position = index / 128 * RAINBOW_STOPS.length;
+		const segment = Math.floor(position);
+		const color = mixColors(RAINBOW_STOPS[segment], RAINBOW_STOPS[(segment + 1) % RAINBOW_STOPS.length], position - segment, "srgb");
+		return ensureTextContrast(color, background);
+	});
+}
 const SWEEP_PERIOD_MS = 5000;
 const SWEEP_TRAVEL_MS = 4500;
 const SWEEP_HEAD_COLUMNS = 2.5;
@@ -227,6 +242,8 @@ export function getRainbowBlockPalette(isDark: boolean) {
 
 const DARK_PALETTE = getRainbowBlockPalette(true);
 const LIGHT_PALETTE = getRainbowBlockPalette(false);
+const DARK_RAINBOW_COLORS = [DARK_PALETTE.bgProjBranch, DARK_PALETTE.bgModelThink, DARK_PALETTE.bgTelemetry, DARK_PALETTE.bgCtx].map(rainbowColors);
+const LIGHT_RAINBOW_COLORS = [LIGHT_PALETTE.bgProjBranch, LIGHT_PALETTE.bgModelThink, LIGHT_PALETTE.bgTelemetry, LIGHT_PALETTE.bgCtx].map(rainbowColors);
 const THINKING_HUES = [25, 85, 155, 235, 300, 55, 190, 265, 340, 115];
 const DARK_THINKING_COLORS = THINKING_HUES.map(hue => ensureTextContrast(oklchColor(0.82, 0.10, hue), DARK_PALETTE.bgModelThink));
 const LIGHT_THINKING_COLORS = THINKING_HUES.map(hue => ensureTextContrast(oklchColor(0.43, 0.10, hue), LIGHT_PALETTE.bgModelThink));
@@ -412,6 +429,17 @@ export class TopStatusBarComponent implements Component {
 		const elapsedMs = now - (st.startTime ?? now);
 		let column = 0;
 		const orderedRight = visibleItems.map((item, index) => {
+			if (st.theme === "rainbow") {
+				const colors = (isDark ? DARK_RAINBOW_COLORS : LIGHT_RAINBOW_COLORS)[rightItems.indexOf(item)];
+				const phase = st.status === "running" ? ((elapsedMs % 4000) + 4000) % 4000 / 4000 : 0;
+				const text = this.blockLetters[index].map(letter => {
+					const position = (column / Math.max(1, rightVis) + phase) % 1;
+					column += letter.width;
+					return this.theme.style(letter.text, { fg: colors[Math.floor(position * colors.length)], bg: item.bg, bold: true });
+				}).join("");
+				column++;
+				return text;
+			}
 			if (st.status !== "running") return item.fields.map(field => this.theme.style(field.text, { fg: field.fg, bg: item.bg, bold: true })).join("");
 			const text = this.blockLetters[index].map(letter => {
 				const strength = sweepStrength(column + letter.width / 2, rightVis, elapsedMs);
@@ -445,6 +473,7 @@ export default function (pi: ExtensionAPI) {
 		status: "idle",
 		visible: true,
 		style: "rainbow_blocks",
+		theme: "chase",
 	};
 	let currentContext: ExtensionContext | null = null;
 	let tuiInstance: TUI | null = null;
@@ -529,7 +558,16 @@ export default function (pi: ExtensionAPI) {
 		if (usage) state.usage = collectUsage(ctx.sessionManager.getEntries());
 	};
 
+	const restoreTheme = (ctx: ExtensionContext) => {
+		state.theme = "chase";
+		for (const entry of ctx.sessionManager.getBranch()) {
+			if (entry.type !== "custom" || entry.customType !== "ipiui-theme") continue;
+			const theme = (entry.data as { theme?: unknown } | undefined)?.theme;
+			if (theme === "chase" || theme === "rainbow") state.theme = theme;
+		}
+	};
 	pi.on("session_start", async (_event, ctx) => {
+		restoreTheme(ctx);
 		stopTimer();
 		stopBranchWatch?.();
 		state.status = ctx.isIdle() ? "idle" : "running";
@@ -653,7 +691,7 @@ export default function (pi: ExtensionAPI) {
 	});
 	const refreshSession = (_event: unknown, ctx: ExtensionContext) => { sync(ctx, true); redraw(); };
 	pi.on("turn_end", refreshSession);
-	pi.on("session_tree", refreshSession);
+	pi.on("session_tree", (event, ctx) => { restoreTheme(ctx); refreshSession(event, ctx); });
 	pi.on("session_compact", refreshSession);
 	pi.on("session_shutdown", async () => {
 		stopTimer();
@@ -670,6 +708,7 @@ export default function (pi: ExtensionAPI) {
 				`${state.visible ? "Show status row(显示状态栏)" : "Hide status row(隐藏状态栏)"} · ${state.visible ? "On" : "Off"}`,
 				`Pane name(窗格名称) · ${paneLabel} · ${customPaneLabel ? "Custom" : "Project directory"}`,
 				`Title sync(标题同步) · ${groupName ? `On · ${groupName}` : "Off"}`,
+				`Theme(主题) · ${state.theme ?? "chase"}`,
 				"Help and command shortcuts(帮助与快捷命令)",
 			];
 			const choice = await ctx.ui.select("ipiui settings · ↑/↓ select · Enter confirm · Esc close", choices);
@@ -693,6 +732,11 @@ export default function (pi: ExtensionAPI) {
 					if (group?.trim()) await handleCommand(`group ${group}`, ctx);
 				}
 			} else if (choice === choices[3]) {
+				const themes = ["Chase(固定配色与追光)", "Rainbow(连续彩虹配色)", "Back to settings(返回设置)"];
+				const selected = await ctx.ui.select(`Theme · ${state.theme ?? "chase"}`, themes);
+				if (selected === themes[0]) await handleCommand("theme chase", ctx);
+				if (selected === themes[1]) await handleCommand("theme rainbow", ctx);
+			} else if (choice === choices[4]) {
 				await handleCommand("help", ctx);
 				return;
 			}
@@ -709,12 +753,30 @@ export default function (pi: ExtensionAPI) {
 			await showPanel(ctx);
 			return;
 		}
+		if (subCmd === "theme") {
+			if (!param) {
+				ctx.ui.notify(`Theme: ${state.theme ?? "chase"}; use /ipiui theme chase|rainbow`, "info");
+				return;
+			}
+			if (param !== "chase" && param !== "rainbow") {
+				ctx.ui.notify("Unknown theme. Use /ipiui theme chase|rainbow", "warning");
+				return;
+			}
+			if (state.theme !== param) {
+				pi.appendEntry("ipiui-theme", { theme: param });
+				state.theme = param;
+			}
+			redraw();
+			ctx.ui.notify(`Theme: ${param}`, "info");
+			return;
+		}
 		if (subCmd === "help") {
 			ctx.ui.notify(
 				`ipiui · /ipiui opens settings / 打开设置. ↑/↓ select / 选择 · Enter confirm / 确认 · Esc close / 关闭.\n` +
 				`  /ipiui on|off|toggle    - Show/hide status row / 显示或隐藏状态栏 (${state.visible ? "on / 已显示" : "off / 已隐藏"})\n` +
 				`  /ipiui name [NAME]      - Set pane title / 设置窗格名称; name reset follows project / reset 恢复项目名 (${paneLabel})\n` +
 				`  /ipiui group [NAME|off] - Set title group / 设置标题分组 (${groupName ?? "off / 已关闭"})\n` +
+				`  /ipiui theme chase|rainbow - Choose theme / 选择主题\n` +
 				`  /ipiui status           - Show current settings / 查看当前设置`,
 				"info"
 			);
@@ -774,6 +836,7 @@ export default function (pi: ExtensionAPI) {
 			ctx.ui.notify(
 				`ipiui status:\n` +
 				`  TopBar: ${state.visible ? "ON" : "OFF"}\n` +
+				`  Theme: ${state.theme ?? "chase"}\n` +
 				`  Pane name: ${paneLabel}\n` +
 				`  Title group: ${groupName ?? "off"}`,
 				"info"
@@ -784,9 +847,9 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.notify(`Unknown subcommand: ${subCmd}. Use /ipiui for help`, "warning");
 	};
 	pi.registerCommand("ipiui", {
-		description: "Open the ipiui settings panel, or use on/off/name/group/status/help",
+		description: "Open ipiui settings, or use on/off/name/group/theme/status/help",
 		getArgumentCompletions: prefix => {
-			const commands = ["menu", "on", "off", "toggle", "name", "name reset", "group", "group all", "group off", "status", "help"];
+			const commands = ["menu", "on", "off", "toggle", "name", "name reset", "group", "group all", "group off", "theme", "theme chase", "theme rainbow", "status", "help"];
 			const matches = commands.filter(value => value.startsWith(prefix)).map(value => ({ value, label: `/ipiui ${value}` }));
 			return matches.length ? matches : null;
 		},
