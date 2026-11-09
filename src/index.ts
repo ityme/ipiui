@@ -455,7 +455,7 @@ export default function (pi: ExtensionAPI) {
 		titleGroup = new TabTitleGroup({
 			root: tabGroupDirectoryRoot,
 			onTitle: writeTitle,
-			onError: () => currentContext?.ui.notify("ipiui: title synchronization failed; use /ipiui group off and rejoin to retry", "warning"),
+			onError: error => currentContext?.ui.notify(`ipiui: title synchronization paused (${error instanceof Error ? error.message : "retrying automatically"}). Check temporary-directory access if this persists.`, "warning"),
 		});
 		try {
 			await titleGroup.start(name, paneLabel, titleStatus);

@@ -70,6 +70,8 @@ export class TabTitleGroup {
 	private queue: Promise<void> = Promise.resolve();
 	private closed = false;
 	private reportedError = false;
+	private failures = 0;
+	private retryAt = 0;
 
 	private readonly options: TitleGroupOptions;
 
@@ -92,7 +94,7 @@ export class TabTitleGroup {
 		await mkdir(this.directory, { recursive: true, mode: 0o700 });
 		await this.refresh();
 		if (this.closed) return;
-		if (this.reportedError) throw new Error("Title group storage is unavailable");
+		if (this.failures > 0) throw new Error("Title group storage is unavailable");
 		this.timer = setInterval(() => { void this.refresh(); }, this.options.intervalMs ?? 1000);
 		this.timer.unref();
 	}
@@ -104,10 +106,11 @@ export class TabTitleGroup {
 	}
 
 	refresh(): Promise<void> {
-		if (this.closed) return Promise.resolve();
+		if (this.closed || this.now() < this.retryAt) return Promise.resolve();
 		this.refreshRequested = true;
 		if (this.refreshing) return this.queue;
 		this.refreshing = true;
+		let operation = "write";
 		this.queue = Promise.resolve().then(async () => {
 			while (this.refreshRequested && !this.closed && this.file && this.directory) {
 				this.refreshRequested = false;
@@ -116,8 +119,19 @@ export class TabTitleGroup {
 					version: 1, id: this.id, started: this.started, updated: now, label: this.label, status: this.status,
 				};
 				const temporary = this.file + ".tmp";
-				await writeFile(temporary, JSON.stringify(record), { mode: 0o600 });
+				operation = "write";
+				try {
+					await writeFile(temporary, JSON.stringify(record), { mode: 0o600 });
+				} catch (error) {
+					if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+					operation = "recreate directory";
+					await mkdir(this.directory, { recursive: true, mode: 0o700 });
+					operation = "write";
+					await writeFile(temporary, JSON.stringify(record), { mode: 0o600 });
+				}
+				operation = "replace record";
 				await rename(temporary, this.file);
+				operation = "read group";
 				const names = (await readdir(this.directory)).filter(name => /^[a-f0-9-]+\.json$/.test(name));
 				const records = await Promise.all(names.map(async name => {
 					try {
@@ -129,12 +143,23 @@ export class TabTitleGroup {
 					} catch { return; } // A peer can leave while the directory is being read.
 				}));
 				this.records = prepareRecords(records.filter((value): value is PaneRecord => !!value));
+				operation = "publish title";
 				if (!this.closed) this.publishTitle();
+				this.failures = 0;
+				this.retryAt = 0;
+				this.reportedError = false;
 			}
 		}).catch(error => {
-			if (!this.closed && !this.reportedError) {
+			if (this.closed) return;
+			this.refreshRequested = false;
+			this.failures++;
+			this.retryAt = this.now() + Math.min(30_000, 1000 * 2 ** Math.min(this.failures - 1, 5));
+			if (this.failures >= 3 && !this.reportedError) {
 				this.reportedError = true;
-				this.options.onError(error);
+				const rawCode = (error as NodeJS.ErrnoException | null)?.code;
+				const code = typeof rawCode === "string" && /^[A-Z0-9_]+$/.test(rawCode) ? rawCode : "UNKNOWN";
+				// Do not include filesystem paths or provider error text in user-facing diagnostics.
+				this.options.onError(new Error(`${operation}: ${code}; retrying automatically`));
 			}
 		}).finally(() => { this.refreshing = false; });
 		return this.queue;

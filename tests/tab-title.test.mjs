@@ -55,6 +55,64 @@ test("two members aggregate, update, isolate groups, expire crashed peers, clean
 	}
 });
 
+test("deleted sync directory is recreated without a warning", async () => {
+	const root = await mkdtemp(join(tmpdir(), "ipiui-recovery-test-"));
+	let title;
+	const errors = [];
+	const member = new TabTitleGroup({ ...options(root, value => { title = value; }), onError: error => errors.push(error) });
+	try {
+		await member.start("work", "before", "idle");
+		await rm(tabGroupDirectory("work", root), { recursive: true, force: true });
+		await member.update("idle", "after");
+		assert.equal(title, "after");
+		assert.deepEqual(errors, []);
+	} finally {
+		await member.stop();
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("sync failures back off, report safe diagnostics, and recover without rejoining", async () => {
+	const root = await mkdtemp(join(tmpdir(), "ipiui-backoff-test-"));
+	let now = 1000, title;
+	const errors = [];
+	const member = new TabTitleGroup({ ...options(root, value => { title = value; }, () => now), onError: error => errors.push(error) });
+	const directory = tabGroupDirectory("work", root);
+	try {
+		await member.start("work", "before", "idle");
+		await rm(directory, { recursive: true, force: true });
+		await writeFile(directory, "block the directory");
+		await member.update("idle", "after");
+		assert.equal(errors.length, 0);
+		for (let i = 0; i < 10; i++) await member.refresh();
+		assert.equal(errors.length, 0, "No extra attempts during backoff");
+		now += 1000; await member.refresh();
+		assert.equal(errors.length, 0);
+		now += 2000; await member.refresh();
+		assert.equal(errors.length, 1);
+		assert.match(errors[0].message, /(?:write|recreate directory): [A-Z0-9_]+; retrying automatically/);
+		assert.ok(!errors[0].message.includes(root));
+		now += 4000; await member.refresh();
+		assert.equal(errors.length, 1, "Persistent failure should warn once");
+		await rm(directory, { force: true });
+		now += 8000; await member.refresh();
+		assert.equal(title, "after");
+		await rm(directory, { recursive: true, force: true });
+		await writeFile(directory, "block again");
+		await member.refresh();
+		now += 1000; await member.refresh();
+		assert.equal(errors.length, 1, "Success resets failure count");
+		now += 2000; await member.refresh();
+		assert.equal(errors.length, 2, "A new persistent failure can warn again");
+		await rm(directory, { force: true });
+		now += 4000; await member.refresh();
+	} finally {
+		await rm(directory, { recursive: true, force: true });
+		await member.stop();
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
 test("group names cannot escape the registry and validation errors do not start a timer", async () => {
 	const root = await mkdtemp(join(tmpdir(), "ipiui-title-test-"));
 	const member = new TabTitleGroup(options(root, () => {}));

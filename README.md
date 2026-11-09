@@ -82,7 +82,7 @@ Compatibility aliases remain available: `/topbar`, `/tabname` and `/tabgroup`.
 
 ## Terminal pane titles
 
-All Pi instances join the `all` group by default and aggregate their titles. Each member shows a braille spinner while running; idle or completed panes show just their label. Animated frames use in-memory records; temporary files synchronize state between separate Pi processes once per second. The files are removed on clean shutdown, and abandoned records expire.
+All Pi instances join the `all` group by default and aggregate their titles. Each member shows a braille spinner while running; idle or completed panes show just their label. Animated frames use in-memory records; temporary files synchronize state between separate Pi processes once per second. The files are removed on clean shutdown, and abandoned records expire. If the temporary sync directory disappears, ipiui recreates it automatically. Other sync failures retry with exponential backoff (up to 30 seconds); a warning appears only after three consecutive failures and includes the operation/error code, without local paths. Successful synchronization resets the failure state.
 
 By default, `all` is shared across terminal windows too. To isolate windows, assign the same custom group to panes that should share a title, and a different group to other windows. Set `IPIUI_GROUP` before starting Pi, or run `/ipiui group NAME` in each pane. Windows Terminal's `WT_SESSION` identifies an individual pane connection, so the extension does not use it as a window identifier.
 
