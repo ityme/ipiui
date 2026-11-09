@@ -1,6 +1,6 @@
 {
-  "name": "ipiui",
-  "version": "0.1.0",
+  "name": "@ityme/ipiui",
+  "version": "1.0.0",
   "description": "Pi extension for a compact status row and shared terminal pane titles",
   "type": "module",
   "main": "index.ts",
@@ -49,5 +49,8 @@
   },
   "engines": {
     "node": ">=22.19.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
