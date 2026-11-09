@@ -87,9 +87,9 @@ function softenPalette<T extends Record<string, Color>>(palette: T): T {
 	const pairs = [
 		["fgStatusReady", "bgStatusReady"], ["fgStatusRun", "bgStatusRun"],
 		["fgStatusErr", "bgStatusErr"], ["fgStatusStp", "bgStatusStp"],
-		["fgProject", "bgProjBranch"], ["fgBranch", "bgProjBranch"], ["fgModelThink", "bgModelThink"],
+		["fgProject", "bgProjBranch"], ["fgBranch", "bgProjBranch"], ["fgModel", "bgModelThink"], ["fgThinking", "bgModelThink"],
 		["fgTokenIn", "bgTelemetry"], ["fgTokenOut", "bgTelemetry"], ["fgCost", "bgTelemetry"],
-		["ctxText", "bgCtx"], ["bracketColor", "bgModelThink"],
+		["ctxText", "bgCtx"], ["ctxValue", "bgCtx"], ["bracketColor", "bgModelThink"],
 		["bracketColor", "bgProjBranch"], ["bracketColor", "bgTelemetry"], ["bracketColor", "bgCtx"],
 	] as const;
 	for (const [foregroundKey, backgroundKey] of pairs) {
@@ -149,9 +149,10 @@ export function getRainbowBlockPalette(isDark: boolean) {
 			fgProject: rgbColor(250, 204, 21), // 黄色
 			fgBranch: rgbColor(56, 189, 248),  // 青色
 
-			// Model and thinking share a fixed lavender foreground.
+			// Model is muted blue-gray; reasoning level gets the brighter lavender accent.
 			bgModelThink: mixColors(DARK_CANVAS, rgbColor(168, 85, 247), 0.20, "srgb"),
-			fgModelThink: rgbColor(190, 174, 221),
+			fgModel: rgbColor(159, 181, 198),
+			fgThinking: rgbColor(202, 174, 236),
 
 			// 模块 4: 遥测数据 (翡翠薄荷微光底)
 			bgTelemetry: mixColors(DARK_CANVAS, rgbColor(34, 197, 94), 0.18, "srgb"),
@@ -164,8 +165,9 @@ export function getRainbowBlockPalette(isDark: boolean) {
 			ctxLow: rgbColor(103, 166, 171),
 			ctxMed: rgbColor(190, 151, 91),
 			ctxHigh: rgbColor(183, 112, 105),
-			ctxTrack: rgbColor(108, 127, 141),
+			ctxTrack: rgbColor(120, 140, 154),
 			ctxText: rgbColor(151, 176, 190),
+			ctxValue: rgbColor(183, 198, 207),
 
 			bracketColor: rgbColor(148, 163, 184),
 		});
@@ -186,7 +188,8 @@ export function getRainbowBlockPalette(isDark: boolean) {
 			fgBranch: rgbColor(2, 132, 199),
 
 			bgModelThink: mixColors(LIGHT_CANVAS, rgbColor(243, 232, 255), 0.25, "srgb"),
-			fgModelThink: rgbColor(105, 76, 142),
+			fgModel: rgbColor(77, 99, 117),
+			fgThinking: rgbColor(104, 66, 151),
 
 			bgTelemetry: mixColors(LIGHT_CANVAS, rgbColor(209, 250, 229), 0.25, "srgb"),
 			fgTokenIn: rgbColor(37, 99, 235),
@@ -197,8 +200,9 @@ export function getRainbowBlockPalette(isDark: boolean) {
 			ctxLow: rgbColor(49, 117, 121),
 			ctxMed: rgbColor(139, 101, 45),
 			ctxHigh: rgbColor(145, 76, 69),
-			ctxTrack: rgbColor(117, 139, 149),
+			ctxTrack: rgbColor(88, 108, 118),
 			ctxText: rgbColor(55, 79, 91),
+			ctxValue: rgbColor(49, 72, 83),
 
 			bracketColor: rgbColor(100, 116, 139),
 		});
@@ -323,6 +327,7 @@ export class TopStatusBarComponent implements Component {
 		const ctxTotalBlocks = 8;
 		const ctxFilled = Math.max(0, Math.min(ctxTotalBlocks, Math.round((ctxPercent / 100) * ctxTotalBlocks)));
 		const ctxEmpty = ctxTotalBlocks - ctxFilled;
+		const ctxBarColor = ctxPercent > 80 ? p.ctxHigh : ctxPercent > 60 ? p.ctxMed : p.ctxLow;
 
 		// 4. 五大独立模块构建 (带方括号 [] 区分，同模块同背景色)
 
@@ -352,12 +357,15 @@ export class TopStatusBarComponent implements Component {
 			{ id: "proj_branch", pill: m2RawText, vis: m2Vis, priority: 4, bg: p.bgProjBranch,
 				fields: [muted("["), { text: `📁 ${cwdBasename}`, fg: p.fgProject }, muted(" "), { text: `${branch}`, fg: p.fgBranch }, muted("]")] },
 			{ id: "model_think", pill: m3RawText, vis: visibleWidth(m3RawText), priority: 3, bg: p.bgModelThink,
-				fields: [muted("["), { text: `🤖 ${model}`, fg: p.fgModelThink }, muted(" · "), { text: thinkFull, fg: p.fgModelThink }, muted("]")] },
+				fields: [muted("["), { text: `🤖 ${model}`, fg: p.fgModel }, muted(" · "), { text: thinkFull, fg: p.fgThinking }, muted("]")] },
 			{ id: "telemetry", pill: m4RawText, vis: visibleWidth(m4RawText), priority: 2, bg: p.bgTelemetry,
 				fields: [muted("["), { text: `⬆️${shortCount(usage.input)}`, fg: p.fgTokenIn }, muted(" "),
 					{ text: `⬇️${shortCount(usage.output)}`, fg: p.fgTokenOut }, muted(" "), { text: `💰 ${usage.cost.toFixed(2)}¥`, fg: p.fgCost }, muted("]")] },
 			{ id: "ctx", pill: m5RawText, vis: visibleWidth(m5RawText), priority: 1, bg: p.bgCtx,
-				fields: [muted("["), { text: m5RawText.slice(1, -1), fg: p.ctxText }, muted("]")] },
+				fields: [muted("["), { text: "CTX ", fg: p.ctxText },
+					{ text: "━".repeat(ctxFilled), fg: ctxBarColor }, { text: "─".repeat(ctxEmpty), fg: p.ctxTrack },
+					{ text: ` ${ctxPercent}% `, fg: ctxBarColor },
+					{ text: `${shortCount(ctxTokens)}/${shortContextWindow(ctxWindow)}`, fg: p.ctxValue }, muted("]")] },
 		];
 
 		const activeSet = new Set<string>();
