@@ -67,29 +67,16 @@ function softenColor(color: Color): Color {
 	return oklchColor(l, Math.min(c * 0.72, MAX_PALETTE_CHROMA), h);
 }
 
-// 经典彩虹色谱
-const RAW_RAINBOW = [
-	rgbColor(255, 110, 130), // soft red/coral
-	rgbColor(255, 175, 80),  // amber/orange
-	rgbColor(245, 220, 80),  // yellow
-	rgbColor(80, 220, 140),  // green/emerald
-	rgbColor(60, 200, 245),  // sky/cyan
-	rgbColor(140, 150, 250), // blue/indigo
-	rgbColor(215, 130, 240), // purple/violet
-].map(softenColor);
-
 const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+const SWEEP_PERIOD_MS = 8000;
+const SWEEP_RADIUS = 8;
 
-// 每个字母赋予动态彩虹渐变色
-function rainbowChars(graphemes: string[], timeMs = 0): { ch: string; col: Color }[] {
-	const total = graphemes.length;
-	const shift = (timeMs / 4000) % 1;
-	return graphemes.map((ch, i) => {
-		const pos = (((i / Math.max(1, total - 1)) + shift) % 1) * (RAW_RAINBOW.length - 1);
-		const idx = Math.min(RAW_RAINBOW.length - 2, Math.floor(pos));
-		const col = mixColors(RAW_RAINBOW[idx], RAW_RAINBOW[idx + 1], pos - idx, "srgb");
-		return { ch, col };
-	});
+function sweepStrength(column: number, width: number, elapsedMs: number): number {
+	// Start and end outside the text so the repeating sweep has no visible jump.
+	const phase = ((elapsedMs % SWEEP_PERIOD_MS) + SWEEP_PERIOD_MS) % SWEEP_PERIOD_MS / SWEEP_PERIOD_MS;
+	const center = -SWEEP_RADIUS + phase * (width + SWEEP_RADIUS * 2);
+	const strength = Math.max(0, 1 - Math.abs(column - center) / SWEEP_RADIUS);
+	return strength * strength * (3 - 2 * strength);
 }
 
 function softenPalette<T extends Record<string, Color>>(palette: T): T {
@@ -100,7 +87,7 @@ function softenPalette<T extends Record<string, Color>>(palette: T): T {
 	const pairs = [
 		["fgStatusReady", "bgStatusReady"], ["fgStatusRun", "bgStatusRun"],
 		["fgStatusErr", "bgStatusErr"], ["fgStatusStp", "bgStatusStp"],
-		["fgProject", "bgProjBranch"], ["fgBranch", "bgProjBranch"],
+		["fgProject", "bgProjBranch"], ["fgBranch", "bgProjBranch"], ["fgModelThink", "bgModelThink"],
 		["fgTokenIn", "bgTelemetry"], ["fgTokenOut", "bgTelemetry"], ["fgCost", "bgTelemetry"],
 		["ctxText", "bgCtx"], ["bracketColor", "bgModelThink"],
 	] as const;
@@ -161,8 +148,9 @@ export function getRainbowBlockPalette(isDark: boolean) {
 			fgProject: rgbColor(250, 204, 21), // 黄色
 			fgBranch: rgbColor(56, 189, 248),  // 青色
 
-			// 模块 3: 模型与思考 (深紫罗兰微光底，字母全彩虹渐变)
+			// Model and thinking share a fixed lavender foreground.
 			bgModelThink: mixColors(DARK_CANVAS, rgbColor(168, 85, 247), 0.20, "srgb"),
+			fgModelThink: rgbColor(190, 174, 221),
 
 			// 模块 4: 遥测数据 (翡翠薄荷微光底)
 			bgTelemetry: mixColors(DARK_CANVAS, rgbColor(34, 197, 94), 0.18, "srgb"),
@@ -176,7 +164,7 @@ export function getRainbowBlockPalette(isDark: boolean) {
 			ctxMed: rgbColor(251, 191, 36),
 			ctxHigh: rgbColor(249, 115, 22),
 			ctxTrack: rgbColor(148, 163, 184),
-			ctxText: rgbColor(203, 213, 225),
+			ctxText: rgbColor(155, 185, 214),
 
 			bracketColor: rgbColor(148, 163, 184),
 		});
@@ -197,6 +185,7 @@ export function getRainbowBlockPalette(isDark: boolean) {
 			fgBranch: rgbColor(2, 132, 199),
 
 			bgModelThink: mixColors(LIGHT_CANVAS, rgbColor(243, 232, 255), 0.25, "srgb"),
+			fgModelThink: rgbColor(105, 76, 142),
 
 			bgTelemetry: mixColors(LIGHT_CANVAS, rgbColor(209, 250, 229), 0.25, "srgb"),
 			fgTokenIn: rgbColor(37, 99, 235),
@@ -208,7 +197,7 @@ export function getRainbowBlockPalette(isDark: boolean) {
 			ctxMed: rgbColor(180, 83, 9),
 			ctxHigh: rgbColor(194, 65, 12),
 			ctxTrack: rgbColor(148, 163, 184),
-			ctxText: rgbColor(51, 65, 85),
+			ctxText: rgbColor(59, 88, 119),
 
 			bracketColor: rgbColor(100, 116, 139),
 		});
@@ -257,9 +246,8 @@ function formatDuration(sec: number): string {
 }
 
 export class TopStatusBarComponent implements Component {
-	private rainbowText = "";
-	private rainbowGraphemes: string[] = [];
-	private rainbowBlocks: string[][] = [];
+	private blockText = "";
+	private blockLetters: { text: string; width: number }[][] = [];
 
 	constructor(private state: TopBarState, private theme: Theme, private context: ExtensionContext) {}
 
@@ -344,7 +332,7 @@ export class TopStatusBarComponent implements Component {
 		const m1Pill = `${m1BracketOpen}${m1Content}${m1BracketClose}`;
 		const m1Vis = 1 + visibleWidth(statusPadded) + 1;
 
-		// Project and branch join the same continuous animated rainbow band as telemetry.
+		// Right-side blocks retain fixed foreground/background colors.
 		const m2RawText = `[📁 ${cwdBasename} ${branch}]`;
 		const m2Vis = visibleWidth(m2RawText);
 
@@ -358,11 +346,11 @@ export class TopStatusBarComponent implements Component {
 		const leftStr = m1Pill;
 		const leftVis = m1Vis;
 
-		const rightItems: { id: string; pill: string; vis: number; priority: number; bg?: Color }[] = [
-			{ id: "proj_branch", pill: m2RawText, vis: m2Vis, priority: 4, bg: p.bgProjBranch },
-			{ id: "model_think", pill: m3RawText, vis: visibleWidth(m3RawText), priority: 3, bg: p.bgModelThink },
-			{ id: "telemetry", pill: m4RawText, vis: visibleWidth(m4RawText), priority: 2, bg: p.bgTelemetry },
-			{ id: "ctx", pill: m5RawText, vis: visibleWidth(m5RawText), priority: 1, bg: p.bgCtx },
+		const rightItems: { id: string; pill: string; vis: number; priority: number; fg: Color; bg: Color }[] = [
+			{ id: "proj_branch", pill: m2RawText, vis: m2Vis, priority: 4, fg: p.fgBranch, bg: p.bgProjBranch },
+			{ id: "model_think", pill: m3RawText, vis: visibleWidth(m3RawText), priority: 3, fg: p.fgModelThink, bg: p.bgModelThink },
+			{ id: "telemetry", pill: m4RawText, vis: visibleWidth(m4RawText), priority: 2, fg: p.fgTokenOut, bg: p.bgTelemetry },
+			{ id: "ctx", pill: m5RawText, vis: visibleWidth(m5RawText), priority: 1, fg: p.ctxText, bg: p.bgCtx },
 		];
 
 		const activeSet = new Set<string>();
@@ -377,25 +365,24 @@ export class TopStatusBarComponent implements Component {
 
 		// Right-side order: project/branch, model/thinking, usage, context.
 		const visibleItems = rightItems.filter(item => activeSet.has(item.id));
-		// Build one color band across all visible telemetry blocks, including brackets and gaps.
-		const rainbowItems = visibleItems.filter(item => item.bg !== undefined);
-		const rainbowText = rainbowItems.map(item => item.pill).join(" ");
-		if (rainbowText !== this.rainbowText) {
-			this.rainbowText = rainbowText;
-			this.rainbowBlocks = rainbowItems.map(item => [...GRAPHEME_SEGMENTER.segment(item.pill)].map(part => part.segment));
-			this.rainbowGraphemes = this.rainbowBlocks.flatMap((letters, i) => i === 0 ? letters : [" ", ...letters]);
+		const blockText = visibleItems.map(item => item.pill).join(" ");
+		if (blockText !== this.blockText) {
+			this.blockText = blockText;
+			this.blockLetters = visibleItems.map(item => [...GRAPHEME_SEGMENTER.segment(item.pill)]
+				.map(part => ({ text: part.segment, width: visibleWidth(part.segment) })));
 		}
-		const band = rainbowChars(this.rainbowGraphemes, now);
-		let bandIndex = 0;
-		let blockIndex = 0;
-		const orderedRight = visibleItems.map(item => {
-			if (item.bg === undefined) return item.pill;
-			const letters = this.rainbowBlocks[blockIndex++];
-			const text = letters.map(() => {
-				const { ch, col } = band[bandIndex++];
-				return this.theme.style(ch, { fg: col, bg: item.bg, bold: true });
+		const elapsedMs = now - (st.startTime ?? now);
+		const highlight = isDark ? rgbColor(232, 238, 245) : rgbColor(27, 36, 52);
+		let column = 0;
+		const orderedRight = visibleItems.map((item, index) => {
+			if (st.status !== "running") return this.theme.style(item.pill, { fg: item.fg, bg: item.bg, bold: true });
+			const text = this.blockLetters[index].map(letter => {
+				const strength = sweepStrength(column + letter.width / 2, rightVis, elapsedMs);
+				column += letter.width;
+				const fg = strength > 0 ? mixColors(item.fg, highlight, strength * 0.75, "srgb") : item.fg;
+				return this.theme.style(letter.text, { fg, bg: item.bg, bold: true });
 			}).join("");
-			bandIndex++; // The inter-block space also occupies a position in the shared band.
+			column++;
 			return text;
 		}).join(" ");
 		const totalVis = leftVis + (activeSet.size > 0 ? rightVis : 0);

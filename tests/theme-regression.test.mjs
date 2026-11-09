@@ -79,31 +79,45 @@ test("running icon animates with braille rotation", () => {
 	}
 });
 
-test("project, model, usage and CTX share one animated rainbow band including brackets", () => {
+test("fixed module colors stay static when idle; running sweep preserves text and contrast", () => {
 	const originalNow = Date.now;
-	const styled = [];
-	const baseTheme = getThemeByName("dark");
-	const theme = Object.create(baseTheme);
-	theme.style = (text, options) => { styled.push({ text, fg: colorToRgb(options.fg) }); return baseTheme.style(text, options); };
-	const component = new TopStatusBarComponent({ status: "idle", visible: true, style: "rainbow_blocks",
-		modelId: "gpt-6.1-sol", thinkingLevel: "high", usage: { input: 17900000, output: 115900, total: 0, cost: 22.52 },
-	}, theme, context);
-	const expected = "[📁 ipiui dev] [🤖 gpt-6.1-sol · high] [⬆️17.9M ⬇️115.9k 💰 22.52¥] [CTX ━━────── 19% 24.5k/128.0k]";
 	try {
-		Date.now = () => 100_000;
-		const line = component.render(220)[0];
-		assert.ok(plain(line).includes(expected));
-		const band = styled.slice(styled.findIndex((item, i) => item.text === "[" && styled[i + 1]?.text === "📁"));
-		assert.equal(band.map(item => item.text).join(""), expected.replaceAll("] [", "]["));
-		const firstColors = band.map(item => item.fg);
-		assert.ok(new Set(firstColors.map(JSON.stringify)).size > 12);
-		styled.length = 0;
-		Date.now = () => 100_700;
-		component.render(220);
-		const second = styled.slice(-band.length).map(item => item.fg);
-		assert.notDeepEqual(second, firstColors);
-		const projectLength = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment("[📁 ipiui dev]")].length;
-		assert.notDeepEqual(second.slice(0, projectLength), firstColors.slice(0, projectLength), "Project and branch colors must animate too");
+		for (const appearance of ["dark", "light"]) {
+			const styled = [];
+			const baseTheme = getThemeByName(appearance);
+			const theme = Object.create(baseTheme);
+			theme.style = (text, options) => { styled.push({ text, ...options }); return baseTheme.style(text, options); };
+			const state = { status: "idle", visible: true, style: "rainbow_blocks", startTime: 100_000,
+				modelId: "gpt-6.1-sol", thinkingLevel: "high", usage: { input: 17900000, output: 115900, total: 0, cost: 22.52 } };
+			const component = new TopStatusBarComponent(state, theme, context);
+			Date.now = () => 100_000;
+			const idle = component.render(220)[0];
+			const blocks = styled.slice(-4);
+			assert.equal(new Set(blocks.map(item => JSON.stringify(colorToRgb(item.fg)))).size, 4);
+			assert.ok(plain(idle).includes("[📁 ipiui dev] [🤖 gpt-6.1-sol · high] [⬆️17.9M ⬇️115.9k 💰 22.52¥] [CTX"));
+			Date.now = () => 104_000;
+			assert.equal(component.render(220)[0], idle, "Idle colors must not animate");
+			state.status = "running";
+			const frames = [];
+			for (const time of [0, 1000, 4000, 7999, 8000]) {
+				Date.now = () => 100_000 + time;
+				styled.length = 0;
+				const line = component.render(220)[0];
+				assert.equal(visibleWidth(line), 220);
+				assert.ok(plain(line).includes("[📁 ipiui dev] [🤖 gpt-6.1-sol · high]"));
+				const right = styled.slice(3);
+				for (const item of right) assert.ok(contrastRatio(item.fg, item.bg) >= 4.5);
+				frames.push(right.map(item => colorToRgb(item.fg)));
+			}
+			assert.notDeepEqual(frames[0], frames[1]);
+			assert.notDeepEqual(frames[1], frames[2]);
+			assert.deepEqual(frames[0], frames[3], "Sweep should leave text before wrapping");
+			assert.deepEqual(frames[0], frames[4]);
+			state.status = "aborted";
+			styled.length = 0;
+			component.render(220);
+			assert.deepEqual(styled.slice(-4).map(item => colorToRgb(item.fg)), blocks.map(item => colorToRgb(item.fg)));
+		}
 	} finally { Date.now = originalNow; }
 });
 
@@ -183,6 +197,7 @@ test("all status-block foregrounds and backgrounds share muted saturation with r
 		for (const [fg, bg] of statusPairs) assert.ok(contrastRatio(fg, bg) >= 4.5, "Status contrast must remain readable");
 		const pairs = [
 			["project", palette.fgProject, palette.bgProjBranch], ["branch", palette.fgBranch, palette.bgProjBranch],
+			["model", palette.fgModelThink, palette.bgModelThink],
 			["token in", palette.fgTokenIn, palette.bgTelemetry], ["token out", palette.fgTokenOut, palette.bgTelemetry], ["cost", palette.fgCost, palette.bgTelemetry],
 			["context", palette.ctxText, palette.bgCtx], ["bracket", palette.bracketColor, palette.bgModelThink],
 		];
