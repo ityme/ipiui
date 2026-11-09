@@ -1,6 +1,6 @@
 {
   "name": "@ityme/ipiui",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Pi extension for a compact status row and shared terminal pane titles",
   "type": "module",
   "main": "index.ts",
