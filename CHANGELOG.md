@@ -5,7 +5,7 @@
 - Add English and Simplified Chinese settings panels with `/ipiui language en|zh`.
 - Restore language selection with the active Pi session branch on reload and tree navigation.
 
-## [0.1.0]
+## [1.1.1]
 
 - Package the extension for installation with `pi install` from a local directory, Git repository or npm after publication.
 - Show a compact, bracketed status row above Pi's native editor.
