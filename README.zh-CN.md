@@ -61,17 +61,20 @@ pi -e /绝对路径/ipiui
 - **`chase`（默认）**：当前固定字段配色、思考等级逐字多色，以及运行时逐字追光。
 - **`rainbow`**：项目、模型、用量、CTX 四个模块共用连续七色色带，working/thinking 时流动，空闲时静止；保留现有布局和背景，不叠加追光。
 
-运行 `/ipiui` → `Theme(主题)` 选择，也可直接执行 `/ipiui theme chase` 或 `/ipiui theme rainbow`；`/ipiui theme` 查看当前主题。选择保存到 Pi 当前会话分支，`/reload` 或恢复该会话时会还原，并随 `/tree` 导航恢复对应分支的选择；不修改 Pi 全局主题或其他会话。
+运行 `/ipiui` → `Theme`（中文面板为“主题”）选择，也可直接执行 `/ipiui theme chase` 或 `/ipiui theme rainbow`；`/ipiui theme` 查看当前主题。选择保存到 Pi 当前会话分支，`/reload` 或恢复该会话时会还原，并随 `/tree` 导航恢复对应分支的选择；不修改 Pi 全局主题或其他会话。
 
 ## 交互面板
 
 运行 `/ipiui` 打开面板。使用方向键选择、Enter 确认、Esc 取消或返回。面板可执行：
 
-- 显示或隐藏状态栏，例如 `Hide status row(隐藏状态栏)`。
+- 显示或隐藏状态栏。
 - 设置窗格标题名称，或恢复为项目目录名。
 - 开启/关闭标题同步，或切换标题分组。
 - 选择 Chase 或 Rainbow 主题。
+- 切换中文或英文面板语言。
 - 查看命令帮助。
+
+面板默认使用英文。运行 `/ipiui` → `Language`，选择 `English` 或 `简体中文`；也可执行 `/ipiui language zh` 切换中文，`/ipiui language en` 切换英文。菜单、输入提示、命令反馈和帮助立即切换，不再双语堆叠。选择保存在 Pi 当前会话分支，重载、恢复会话或 `/tree` 导航后还原；不影响其他会话，也不改变状态栏的 `working` / `thinking` / `error` 标签。
 
 ## 命令速查
 
@@ -84,6 +87,7 @@ pi -e /绝对路径/ipiui
 | `/ipiui group NAME` | 加入或切换标题分组 |
 | `/ipiui group off` | 关闭标题同步 |
 | `/ipiui theme [chase|rainbow]` | 查看或切换状态栏主题 |
+| `/ipiui language [en|zh]` | 查看或切换面板语言 |
 | `/ipiui status`、`/ipiui help` | 查看当前设置或命令说明 |
 
 兼容旧命令：`/topbar`、`/tabname`、`/tabgroup`。

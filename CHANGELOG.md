@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add English and Simplified Chinese settings panels with `/ipiui language en|zh`.
+- Restore language selection with the active Pi session branch on reload and tree navigation.
+
 ## [0.1.0]
 
 - Package the extension for installation with `pi install` from a local directory, Git repository or npm after publication.

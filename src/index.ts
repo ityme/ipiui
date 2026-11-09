@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { TabTitleGroup, cleanTitleLabel, type TabStatus } from "./tab-title.js";
+import { languageName, translate, type PanelLanguage } from "./i18n.js";
 import {
 	type Color,
 	type Component,
@@ -475,6 +476,9 @@ export default function (pi: ExtensionAPI) {
 		style: "rainbow_blocks",
 		theme: "chase",
 	};
+	let language: PanelLanguage = "en";
+	const t = (key: Parameters<typeof translate>[1], values?: Record<string, string>) => translate(language, key, values);
+	const enabledText = (enabled: boolean) => t(enabled ? "on" : "off");
 	let currentContext: ExtensionContext | null = null;
 	let tuiInstance: TUI | null = null;
 	let bar: TopStatusBarComponent | null = null;
@@ -510,7 +514,7 @@ export default function (pi: ExtensionAPI) {
 		titleGroup = new TabTitleGroup({
 			root: tabGroupDirectoryRoot,
 			onTitle: writeTitle,
-			onError: error => currentContext?.ui.notify(`ipiui: title synchronization paused (${error instanceof Error ? error.message : "retrying automatically"}). Check temporary-directory access if this persists.`, "warning"),
+			onError: error => currentContext?.ui.notify(t("syncFailed", { detail: error instanceof Error ? error.message : t("retrying") }), "warning"),
 		});
 		try {
 			await titleGroup.start(name, paneLabel, titleStatus);
@@ -558,16 +562,23 @@ export default function (pi: ExtensionAPI) {
 		if (usage) state.usage = collectUsage(ctx.sessionManager.getEntries());
 	};
 
-	const restoreTheme = (ctx: ExtensionContext) => {
+	const restoreSettings = (ctx: ExtensionContext) => {
 		state.theme = "chase";
+		language = "en";
 		for (const entry of ctx.sessionManager.getBranch()) {
-			if (entry.type !== "custom" || entry.customType !== "ipiui-theme") continue;
-			const theme = (entry.data as { theme?: unknown } | undefined)?.theme;
-			if (theme === "chase" || theme === "rainbow") state.theme = theme;
+			if (entry.type !== "custom") continue;
+			if (entry.customType === "ipiui-theme") {
+				const theme = (entry.data as { theme?: unknown } | undefined)?.theme;
+				if (theme === "chase" || theme === "rainbow") state.theme = theme;
+			}
+			if (entry.customType === "ipiui-language") {
+				const saved = (entry.data as { language?: unknown } | undefined)?.language;
+				if (saved === "en" || saved === "zh") language = saved;
+			}
 		}
 	};
 	pi.on("session_start", async (_event, ctx) => {
-		restoreTheme(ctx);
+		restoreSettings(ctx);
 		stopTimer();
 		stopBranchWatch?.();
 		state.status = ctx.isIdle() ? "idle" : "running";
@@ -612,7 +623,7 @@ export default function (pi: ExtensionAPI) {
 			try {
 				await joinTitleGroup(groupName);
 			} catch {
-				ctx.ui.notify("ipiui: could not join title group; check IPIUI_GROUP and temporary-directory access", "warning");
+				ctx.ui.notify(t("startupFailed"), "warning");
 			}
 		}
 		if (state.status === "running") startIconTimer();
@@ -691,7 +702,7 @@ export default function (pi: ExtensionAPI) {
 	});
 	const refreshSession = (_event: unknown, ctx: ExtensionContext) => { sync(ctx, true); redraw(); };
 	pi.on("turn_end", refreshSession);
-	pi.on("session_tree", (event, ctx) => { restoreTheme(ctx); refreshSession(event, ctx); });
+	pi.on("session_tree", (event, ctx) => { restoreSettings(ctx); refreshSession(event, ctx); });
 	pi.on("session_compact", refreshSession);
 	pi.on("session_shutdown", async () => {
 		stopTimer();
@@ -705,38 +716,46 @@ export default function (pi: ExtensionAPI) {
 	const showPanel = async (ctx: ExtensionContext) => {
 		while (true) {
 			const choices = [
-				`${state.visible ? "Show status row(显示状态栏)" : "Hide status row(隐藏状态栏)"} · ${state.visible ? "On" : "Off"}`,
-				`Pane name(窗格名称) · ${paneLabel} · ${customPaneLabel ? "Custom" : "Project directory"}`,
-				`Title sync(标题同步) · ${groupName ? `On · ${groupName}` : "Off"}`,
-				`Theme(主题) · ${state.theme ?? "chase"}`,
-				"Help and command shortcuts(帮助与快捷命令)",
+				`${t(state.visible ? "hide" : "show")} · ${enabledText(state.visible)}`,
+				`${t("paneName")} · ${paneLabel} · ${t(customPaneLabel ? "custom" : "projectDirectory")}`,
+				`${t("titleSync")} · ${enabledText(!!groupName)}${groupName ? ` · ${groupName}` : ""}`,
+				`${t("theme")} · ${state.theme ?? "chase"}`,
+				`${t("language")} · ${languageName(language)}`,
+				t("help"),
 			];
-			const choice = await ctx.ui.select("ipiui settings · ↑/↓ select · Enter confirm · Esc close", choices);
+			const choice = await ctx.ui.select(t("settings"), choices);
 			if (!choice) return;
 			if (choice === choices[0]) {
 				await handleCommand("toggle", ctx);
 			} else if (choice === choices[1]) {
-				const action = await ctx.ui.select(`Pane name · ${paneLabel}`, ["Set custom name(设置自定义名称)", "Use project directory name(使用项目目录名)", "Back to settings(返回设置)"]);
-				if (action === "Use project directory name(使用项目目录名)") await handleCommand("name reset", ctx);
-				if (action === "Set custom name(设置自定义名称)") {
-					const name = await ctx.ui.input("Pane name · up to 20 characters · Esc cancels", paneLabel);
+				const actions = [t("setName"), t("resetName"), t("back")];
+				const action = await ctx.ui.select(`${t("paneName")} · ${paneLabel}`, actions);
+				if (action === actions[1]) await handleCommand("name reset", ctx);
+				if (action === actions[0]) {
+					const name = await ctx.ui.input(t("namePrompt"), paneLabel);
 					if (name?.trim()) await handleCommand(`name ${name}`, ctx);
 				}
 			} else if (choice === choices[2]) {
-				const actions = [groupName ? "Turn title sync off(关闭标题同步)" : "Turn title sync on(开启标题同步)", "Change group(切换分组)", "Join default group(加入默认分组)", "Back to settings(返回设置)"];
-				const action = await ctx.ui.select("Panes in the same group share a title. Use different groups to isolate them.", actions);
+				const actions = [t(groupName ? "syncOff" : "syncOn"), t("changeGroup"), t("defaultGroup"), t("back")];
+				const action = await ctx.ui.select(t("groupHint"), actions);
 				if (action === actions[0]) await handleCommand(`group ${groupName ? "off" : defaultGroupName}`, ctx);
 				if (action === actions[2]) await handleCommand(`group ${defaultGroupName}`, ctx);
 				if (action === actions[1]) {
-					const group = await ctx.ui.input("Group name · up to 64 characters · Esc cancels", groupName ?? defaultGroupName);
+					const group = await ctx.ui.input(t("groupPrompt"), groupName ?? defaultGroupName);
 					if (group?.trim()) await handleCommand(`group ${group}`, ctx);
 				}
 			} else if (choice === choices[3]) {
-				const themes = ["Chase(固定配色与追光)", "Rainbow(连续彩虹配色)", "Back to settings(返回设置)"];
-				const selected = await ctx.ui.select(`Theme · ${state.theme ?? "chase"}`, themes);
+				const themes = [t("chase"), t("rainbow"), t("back")];
+				const selected = await ctx.ui.select(`${t("theme")} · ${state.theme ?? "chase"}`, themes);
 				if (selected === themes[0]) await handleCommand("theme chase", ctx);
 				if (selected === themes[1]) await handleCommand("theme rainbow", ctx);
 			} else if (choice === choices[4]) {
+				// Native language names stay recognizable even when the active language is unfamiliar.
+				const languages = ["English", "简体中文", t("back")];
+				const selected = await ctx.ui.select(t("languagePrompt"), languages);
+				if (selected === languages[0]) await handleCommand("language en", ctx);
+				if (selected === languages[1]) await handleCommand("language zh", ctx);
+			} else if (choice === choices[5]) {
 				await handleCommand("help", ctx);
 				return;
 			}
@@ -753,13 +772,29 @@ export default function (pi: ExtensionAPI) {
 			await showPanel(ctx);
 			return;
 		}
+		if (subCmd === "language") {
+			if (!param) {
+				ctx.ui.notify(t("languageUsage", { language: languageName(language) }), "info");
+				return;
+			}
+			if (param !== "en" && param !== "zh") {
+				ctx.ui.notify(t("languageUnknown"), "warning");
+				return;
+			}
+			if (language !== param) {
+				pi.appendEntry("ipiui-language", { language: param });
+				language = param;
+			}
+			ctx.ui.notify(t("languageChanged", { language: languageName(language) }), "info");
+			return;
+		}
 		if (subCmd === "theme") {
 			if (!param) {
-				ctx.ui.notify(`Theme: ${state.theme ?? "chase"}; use /ipiui theme chase|rainbow`, "info");
+				ctx.ui.notify(t("themeUsage", { theme: state.theme ?? "chase" }), "info");
 				return;
 			}
 			if (param !== "chase" && param !== "rainbow") {
-				ctx.ui.notify("Unknown theme. Use /ipiui theme chase|rainbow", "warning");
+				ctx.ui.notify(t("themeUnknown"), "warning");
 				return;
 			}
 			if (state.theme !== param) {
@@ -767,32 +802,24 @@ export default function (pi: ExtensionAPI) {
 				state.theme = param;
 			}
 			redraw();
-			ctx.ui.notify(`Theme: ${param}`, "info");
+			ctx.ui.notify(t("themeChanged", { theme: param }), "info");
 			return;
 		}
 		if (subCmd === "help") {
-			ctx.ui.notify(
-				`ipiui · /ipiui opens settings / 打开设置. ↑/↓ select / 选择 · Enter confirm / 确认 · Esc close / 关闭.\n` +
-				`  /ipiui on|off|toggle    - Show/hide status row / 显示或隐藏状态栏 (${state.visible ? "on / 已显示" : "off / 已隐藏"})\n` +
-				`  /ipiui name [NAME]      - Set pane title / 设置窗格名称; name reset follows project / reset 恢复项目名 (${paneLabel})\n` +
-				`  /ipiui group [NAME|off] - Set title group / 设置标题分组 (${groupName ?? "off / 已关闭"})\n` +
-				`  /ipiui theme chase|rainbow - Choose theme / 选择主题\n` +
-				`  /ipiui status           - Show current settings / 查看当前设置`,
-				"info"
-			);
+			ctx.ui.notify([t("helpIntro"), t("helpVisibility"), t("helpName"), t("helpGroup"), t("helpTheme"), t("helpLanguage"), t("helpStatus")].join("\n"), "info");
 			return;
 		}
 
 		if (["on", "off", "toggle"].includes(subCmd)) {
 			state.visible = subCmd === "on" ? true : subCmd === "off" ? false : !state.visible;
-			ctx.ui.notify(`Status bar: ${state.visible ? "ON" : "OFF"}`, "info");
+			ctx.ui.notify(t("visibilityChanged", { value: enabledText(state.visible) }), "info");
 			redraw();
 			return;
 		}
 
 		if (subCmd === "name") {
 			if (!param) {
-				ctx.ui.notify(`Title name: ${paneLabel}; use /ipiui name NAME`, "info");
+				ctx.ui.notify(t("nameUsage", { name: paneLabel }), "info");
 				return;
 			}
 			if (param === "reset") {
@@ -803,53 +830,49 @@ export default function (pi: ExtensionAPI) {
 				customPaneLabel = true;
 			}
 			publishTitle();
-			ctx.ui.notify(`Title name: ${paneLabel}`, "info");
+			ctx.ui.notify(t("nameChanged", { name: paneLabel }), "info");
 			return;
 		}
 
 		if (subCmd === "group") {
 			if (!param) {
-				ctx.ui.notify(groupName ? `Title group: ${groupName}; pane name: ${paneLabel}` : "Title sync is off. Use /ipiui group NAME to rejoin.", "info");
+				ctx.ui.notify(groupName ? t("groupStatus", { group: groupName, name: paneLabel }) : t("groupOff"), "info");
 				return;
 			}
 			if (param === "off") {
 				await stopTitleGroup();
 				groupName = undefined;
 				ctx.ui.setTitle("pi");
-				ctx.ui.notify("Title group disabled", "info");
+				ctx.ui.notify(t("groupDisabled"), "info");
 				return;
 			}
 			if (param.length > 64 || /[\x00-\x1f\x7f]/.test(param)) {
-				ctx.ui.notify("Group must be 1–64 characters with no control characters", "warning");
+				ctx.ui.notify(t("groupInvalid"), "warning");
 				return;
 			}
 			try {
 				await joinTitleGroup(param);
-				ctx.ui.notify(`Joined title group: ${param}`, "info");
+				ctx.ui.notify(t("groupJoined", { group: param }), "info");
 			} catch {
-				ctx.ui.notify("Could not join title group; check the group name and local temporary-directory access.", "error");
+				ctx.ui.notify(t("groupFailed"), "error");
 			}
 			return;
 		}
 
 		if (subCmd === "status") {
-			ctx.ui.notify(
-				`ipiui status:\n` +
-				`  TopBar: ${state.visible ? "ON" : "OFF"}\n` +
-				`  Theme: ${state.theme ?? "chase"}\n` +
-				`  Pane name: ${paneLabel}\n` +
-				`  Title group: ${groupName ?? "off"}`,
-				"info"
-			);
+			ctx.ui.notify([
+				t("status"), `${t("topBar")}: ${enabledText(state.visible)}`, `${t("theme")}: ${state.theme ?? "chase"}`,
+				`${t("language")}: ${languageName(language)}`, `${t("paneName")}: ${paneLabel}`, `${t("group")}: ${groupName ?? t("off")}`,
+			].join("\n"), "info");
 			return;
 		}
 
-		ctx.ui.notify(`Unknown subcommand: ${subCmd}. Use /ipiui for help`, "warning");
+		ctx.ui.notify(t("unknown", { command: subCmd }), "warning");
 	};
 	pi.registerCommand("ipiui", {
-		description: "Open ipiui settings, or use on/off/name/group/theme/status/help",
+		description: "Open ipiui settings (设置), or use on/off/name/group/theme/language/status/help",
 		getArgumentCompletions: prefix => {
-			const commands = ["menu", "on", "off", "toggle", "name", "name reset", "group", "group all", "group off", "theme", "theme chase", "theme rainbow", "status", "help"];
+			const commands = ["menu", "on", "off", "toggle", "name", "name reset", "group", "group all", "group off", "theme", "theme chase", "theme rainbow", "language", "language en", "language zh", "status", "help"];
 			const matches = commands.filter(value => value.startsWith(prefix)).map(value => ({ value, label: `/ipiui ${value}` }));
 			return matches.length ? matches : null;
 		},

@@ -61,7 +61,7 @@ Right-side fields use fixed colors: soft yellow for project, pale blue for branc
 - **`chase` (default):** fixed field colors, multicolor thinking letters and the running highlight chase described above.
 - **`rainbow`:** a continuous seven-color band across the project, model, usage and context blocks. It flows while working/thinking and freezes at idle. It uses the same layout and backgrounds, with no chase overlay.
 
-Choose a theme in `/ipiui` → `Theme(主题)`, or run `/ipiui theme chase` / `/ipiui theme rainbow`. `/ipiui theme` shows the selected theme. The choice is stored in the active Pi session branch, restored on `/reload` or resuming that session, and follows `/tree` navigation. It does not change Pi's global theme or other sessions.
+Choose a theme in `/ipiui` → `Theme` (or `主题` in Chinese), or run `/ipiui theme chase` / `/ipiui theme rainbow`. `/ipiui theme` shows the selected theme. The choice is stored in the active Pi session branch, restored on `/reload` or resuming that session, and follows `/tree` navigation. It does not change Pi's global theme or other sessions.
 
 ## Commands
 
@@ -69,11 +69,14 @@ Run `/ipiui` to open the interactive settings panel. Use the arrow keys to choos
 
 The panel lets you:
 
-- Show or hide the status row (for example, `Hide status row(隐藏状态栏)`).
+- Show or hide the status row.
 - Set a custom pane name or reset it to the project directory name.
 - Enable/disable title synchronization or switch groups.
 - Choose the Chase or Rainbow theme.
+- Switch panel language between English and Simplified Chinese.
 - View help.
+
+The panel defaults to English. Open `/ipiui` → `Language` and choose `English` or `简体中文`, or run `/ipiui language en` / `/ipiui language zh`. Menus, prompts, command feedback and help switch immediately. The choice is saved to the active Pi session branch and restored on `/reload`, resume and `/tree` navigation. It does not change other sessions or the status row's `working` / `thinking` / `error` labels.
 
 Direct commands are also available:
 
@@ -85,6 +88,7 @@ Direct commands are also available:
 | `/ipiui group NAME` | Join or switch the shared title group |
 | `/ipiui group off` | Disable title synchronization |
 | `/ipiui theme [chase|rainbow]` | View or change the status row theme |
+| `/ipiui language [en|zh]` | View or change the panel language |
 | `/ipiui status`, `/ipiui help` | Show current settings or command help |
 
 Compatibility aliases remain available: `/topbar`, `/tabname` and `/tabgroup`.
