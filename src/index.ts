@@ -90,7 +90,7 @@ function chaseColor(base: Color, strength: number, isDark: boolean): Color {
 	if (strength <= 0) return base;
 	const { l, c, h } = colorToOklch(base);
 	// Preserve each field's hue/chroma. Light backgrounds use stronger ink instead of white glare.
-	const lightness = isDark ? Math.min(0.94, l + 0.11 * strength) : Math.max(0.2, l - 0.08 * strength);
+	const lightness = isDark ? Math.min(0.97, l + 0.16 * strength) : Math.max(0.16, l - 0.12 * strength);
 	return oklchColor(lightness, c, h);
 }
 
