@@ -90,7 +90,7 @@ function chaseColor(base: Color, strength: number, isDark: boolean): Color {
 	if (strength <= 0) return base;
 	const { l, c, h } = colorToOklch(base);
 	// Preserve each field's hue/chroma. Light backgrounds use stronger ink instead of white glare.
-	const lightness = isDark ? Math.min(0.97, l + 0.16 * strength) : Math.max(0.16, l - 0.12 * strength);
+	const lightness = isDark ? Math.min(0.98, l + 0.22 * strength) : Math.max(0.12, l - 0.17 * strength);
 	return oklchColor(lightness, c, h);
 }
 
@@ -418,7 +418,8 @@ export class TopStatusBarComponent implements Component {
 				column += letter.width;
 				const base = item.fields[letter.field].fg;
 				const fg = chaseColor(base, strength, isDark);
-				return this.theme.style(letter.text, { fg, bg: item.bg, bold: true });
+				const isThinkingLevel = item.id === "model_think" && letter.field >= 3 && letter.field < item.fields.length - 1;
+				return this.theme.style(letter.text, { fg, bg: item.bg, bold: isThinkingLevel || strength >= 0.65 });
 			}).join("");
 			column++;
 			return text;
