@@ -41,7 +41,7 @@ try {
 		cwd: projectRoot,
 	}))[0];
 	const paths = metadata.files.map(file => file.path);
-	for (const required of ["package.json", "index.ts", "src/index.ts", "src/tab-title.ts", "src/i18n.ts", "README.md", "LICENSE", "CHANGELOG.md"]) {
+	for (const required of ["package.json", "index.ts", "src/index.ts", "src/tab-title.ts", "src/i18n.ts", "src/panel.ts", "README.md", "LICENSE", "CHANGELOG.md"]) {
 		assert.ok(paths.includes(required), `Release archive is missing ${required}`);
 	}
 	assert.ok(!paths.some(file => /^(?:test|tests|scripts|node_modules|\.agent|\.git)\//.test(file)), "Release includes development or local files");

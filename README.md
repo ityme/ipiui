@@ -65,7 +65,7 @@ Choose a theme in `/ipiui` → `Theme` (or `主题` in Chinese), or run `/ipiui 
 
 ## Commands
 
-Run `/ipiui` to open the interactive settings panel. Language is the first row; settings use aligned label/value columns. Use the arrow keys to choose an action, Enter to confirm and Esc to cancel or go back.
+Run `/ipiui` to open the interactive settings panel. Language is the first row; main settings and theme descriptions use Pi's native SelectList label/description columns. Open Status row to choose On or Off explicitly; Enter on the main row does not toggle it. Use the arrow keys to choose an action, Enter to confirm and Esc to cancel or go back.
 
 The panel lets you:
 

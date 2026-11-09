@@ -28,6 +28,7 @@ const jiti = createJiti(path.join(projectRoot, "index.ts"), {
 });
 const { default: extension, TopStatusBarComponent, collectUsage, getRainbowBlockPalette, sweepStrength } = jiti(path.join(projectRoot, "index.ts"));
 const { TabTitleGroup, tabGroupDirectory } = jiti(path.join(projectRoot, "src/tab-title.ts"));
+const { selectPanel } = jiti(path.join(projectRoot, "src/panel.ts"));
 const { getThemeByName, loadThemeFromPath } = await import(pathToFileURL(path.join(hostRoot,
 	"@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js")));
 const { visibleWidth, stripTerminalSequences, colorToRgb, colorToOklch, indexedColor, TuiMainScreen,
@@ -591,6 +592,16 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 				const selected = selections.shift();
 				return typeof selected === "number" ? choices[selected] : selected;
 			},
+			custom: async factory => new Promise(resolve => {
+				const component = factory({ requestRender() {} }, getThemeByName("dark"), {}, resolve);
+				const lines = component.render(80).map(plain);
+				prompts.push({ title: lines[0], choices: lines.slice(2, -2) });
+				const selected = selections.shift();
+				if (typeof selected === "number") {
+					for (let i = 0; i < selected; i++) component.handleInput("\u001b[B");
+					component.handleInput("\r");
+				} else component.handleInput("\u001b");
+			}),
 			input: async () => answers.shift(),
 			setWorkingVisible() {}, setFooter() {},
 			setWidget(_key, factory) {
@@ -637,12 +648,20 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 		await commands.get("tabgroup").handler("review", ctx);
 		await command("status");
 		assert.match(notices.at(-1), /Title group: review/);
-		selections.push(1, undefined);
+		selections.push(1, 1, undefined);
 		await command("");
-		assert.match(prompts[0].choices[0], /^Language\s+: English$/);
-		assert.match(prompts[0].choices[1], /^Status row\s+: On$/);
-		assert.match(prompts[1].choices[1], /^Status row\s+: Off$/);
-		assert.equal(new Set(prompts[0].choices.map(choice => visibleWidth(choice.split(":")[0]))).size, 1, "Settings values must align");
+		assert.match(prompts[0].choices[0], /^→ Language\s+English$/);
+		assert.match(prompts[0].choices[1], /^  Status row\s+On$/);
+		assert.match(prompts[1].choices[0], /^→ On\s+Current$/);
+		assert.match(prompts[1].choices[1], /^  Off$/);
+		assert.match(prompts[2].choices[1], /^  Status row\s+Off$/);
+		const beforeCancel = notices.length;
+		selections.push(1, undefined, undefined);
+		await command("");
+		assert.equal(notices.length, beforeCancel, "Cancelling visibility submenu must not change state");
+		selections.push(1, 0, undefined);
+		await command("");
+		assert.match(notices.at(-1), /Status bar: On/);
 		await command("on");
 		selections.push(2, 0, undefined);
 		answers.push("panel-name");
@@ -687,9 +706,11 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 		await command("");
 		assert.deepEqual(entries.at(-1).data, { language: "zh" });
 		assert.ok(prompts.at(-1).title.includes("设置"));
-		assert.match(prompts.at(-1).choices[0], /^语言\s+: 简体中文$/);
-		assert.match(prompts.at(-1).choices[4], /^主题\s+: 追光$/);
-		assert.equal(new Set(prompts.at(-1).choices.map(choice => visibleWidth(choice.split(":")[0]))).size, 1, "Chinese settings values must align");
+		assert.match(prompts.at(-1).choices[0], /^→ 语言\s+简体中文$/);
+		assert.match(prompts.at(-1).choices[4], /^  主题\s+追光$/);
+		const chineseRows = prompts.at(-1).choices;
+		const valueColumns = [[0, "简体中文"], [2, "ipiui"], [4, "追光"]].map(([index, value]) => visibleWidth(chineseRows[index].slice(0, chineseRows[index].indexOf(value))));
+		assert.equal(new Set(valueColumns).size, 1, "Chinese settings values must align");
 		assert.ok(!prompts.at(-1).choices.some(choice => choice.includes("(窗格名称)")));
 		await command("status");
 		assert.match(notices.at(-1), /语言: 简体中文/);
@@ -751,6 +772,37 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 		else process.env.IPIUI_GROUP = savedGroup;
 		await fs.rm(root, { recursive: true, force: true });
 	}
+});
+
+test("native panel columns align for every selected row and retain values at narrow widths", async () => {
+	let component;
+	const items = [
+		{ value: "language", label: "语言", description: "简体中文" },
+		{ value: "visibility", label: "状态栏", description: "已关闭" },
+		{ value: "name", label: "窗格名称", description: "项目很长的名称 (项目目录)" },
+		{ value: "theme", label: "主题", description: "追光" },
+	];
+	const ctx = { ui: { custom: factory => new Promise(resolve => {
+		component = factory({ requestRender() {} }, getThemeByName("dark"), {}, resolve);
+	}) } };
+	const selected = selectPanel(ctx, "设置", items, "Enter 选择 · Esc 返回");
+	for (let index = 0; index < items.length; index++) {
+		const rows = component.render(80).slice(2, -2).map(plain);
+		const columns = rows.map((row, i) => visibleWidth(row.slice(0, row.indexOf(items[i].description))));
+		assert.equal(new Set(columns).size, 1, `Value column must align with selected row ${index}`);
+		assert.ok(rows[index].startsWith("→ "));
+		component.handleInput("\u001b[B");
+	}
+	for (const width of [20, 40, 41, 80]) {
+		const rows = component.render(width);
+		assert.ok(rows.every(row => visibleWidth(row) <= width));
+		assert.ok(plain(rows[2]).includes("简体中文"), "Values must remain visible in a narrow panel");
+	}
+	component.handleInput("\r");
+	assert.equal(await selected, "language");
+	const cancelled = selectPanel(ctx, "设置", items, "Esc 返回");
+	component.handleInput("\u001b");
+	assert.equal(await cancelled, undefined);
 });
 
 test("invalid startup group does not prevent the extension from starting", async () => {
