@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.1.2]
+## [1.2.0]
 
 - Disable shared title synchronization by default; retain explicit group opt-in.
 - Add an independent, session-persistent title activity indicator, enabled by default.
