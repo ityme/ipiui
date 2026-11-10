@@ -72,6 +72,7 @@ The panel lets you:
 - Show or hide the status row.
 - Set a custom pane name or reset it to the project directory name.
 - Enable/disable title synchronization or switch groups.
+- Enable/disable the title activity spinner independently of synchronization.
 - Choose the Chase or Rainbow theme.
 - Switch panel language between English and Simplified Chinese.
 - View help.
@@ -87,6 +88,7 @@ Direct commands are also available:
 | `/ipiui name reset` | Follow the project directory name again |
 | `/ipiui group NAME` | Join or switch the shared title group |
 | `/ipiui group off` | Disable title synchronization |
+| `/ipiui indicator [on|off]` | View or toggle the title activity spinner (on by default) |
 | `/ipiui theme [chase|rainbow]` | View or change the status row theme |
 | `/ipiui language [en|zh]` | View or change the panel language |
 | `/ipiui status`, `/ipiui help` | Show current settings or command help |
@@ -95,9 +97,9 @@ Compatibility aliases remain available: `/topbar`, `/tabname` and `/tabgroup`.
 
 ## Terminal pane titles
 
-All Pi instances join the `all` group by default and aggregate their titles. Each member shows a braille spinner while running; idle or completed panes show just their label. Animated frames use in-memory records; temporary files synchronize state between separate Pi processes once per second. The files are removed on clean shutdown, and abandoned records expire. If the temporary sync directory disappears, ipiui recreates it automatically. Other sync failures retry with exponential backoff (up to 30 seconds); a warning appears only after three consecutive failures and includes the operation/error code, without local paths. Successful synchronization resets the failure state.
+Title synchronization is disabled by default. Enable it in `/ipiui` → Title sync, or run `/ipiui group NAME`. The title activity spinner is a separate setting, enabled by default; control it in `/ipiui` → Title activity or with `/ipiui indicator on|off`. With synchronization off, the current pane's title shows the spinner while that Pi process is running. Turning the indicator off restores the plain `pi` title unless group synchronization is active. The panel uses `IPIUI_GROUP` (or `all`) as the suggested default group; setting the environment variable does not enable synchronization automatically. Each member's braille spinner can be hidden independently; idle or completed panes show just their label. Animated frames use in-memory records; temporary files synchronize state between separate Pi processes once per second. The files are removed on clean shutdown, and abandoned records expire. If the temporary sync directory disappears, ipiui recreates it automatically. Other sync failures retry with exponential backoff (up to 30 seconds); a warning appears only after three consecutive failures and includes the operation/error code, without local paths. Successful synchronization resets the failure state.
 
-By default, `all` is shared across terminal windows too. To isolate windows, assign the same custom group to panes that should share a title, and a different group to other windows. Set `IPIUI_GROUP` before starting Pi, or run `/ipiui group NAME` in each pane. Windows Terminal's `WT_SESSION` identifies an individual pane connection, so the extension does not use it as a window identifier.
+When enabled, the `all` group is shared across terminal windows too. To isolate windows, assign the same custom group to panes that should share a title, and a different group to other windows. Set `IPIUI_GROUP` before starting Pi to choose the panel's default group, then enable synchronization in the panel; or run `/ipiui group NAME` in each pane. Windows Terminal's `WT_SESSION` identifies an individual pane connection, so the extension does not use it as a window identifier.
 
 Terminal titles are plain text; they cannot use the status row's ANSI colors. No title color escape sequences are emitted.
 

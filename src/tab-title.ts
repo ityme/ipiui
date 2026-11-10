@@ -4,7 +4,7 @@ import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 
 export type TabStatus = "idle" | "running" | "done" | "error" | "aborted";
-interface PaneRecord {
+export interface PaneRecord {
 	version: 1;
 	id: string;
 	started: number;
@@ -32,13 +32,13 @@ function prepareRecords(records: PaneRecord[]): PaneRecord[] {
 		.map(record => ({ ...record, label: cleanTitleLabel(record.label) }));
 }
 
-function formatPreparedTitle(records: PaneRecord[], now: number): string {
+function formatPreparedTitle(records: PaneRecord[], now: number, indicatorEnabled = true): string {
 	const spinner = BRAILLE_SPINNER[Math.floor(now / 100) % BRAILLE_SPINNER.length];
-	return records.map(record => `${record.status === "running" ? spinner : ""}${record.label}`).join(" ┃ ");
+	return records.map(record => `${indicatorEnabled && record.status === "running" ? spinner : ""}${record.label}`).join(" ┃ ");
 }
 
-export function formatTabTitle(records: PaneRecord[], now: number = Date.now()): string {
-	return formatPreparedTitle(prepareRecords(records), now);
+export function formatTabTitle(records: PaneRecord[], now: number = Date.now(), indicatorEnabled = true): string {
+	return formatPreparedTitle(prepareRecords(records), now, indicatorEnabled);
 }
 
 interface TitleGroupOptions {
@@ -47,6 +47,8 @@ interface TitleGroupOptions {
 	staleMs?: number;
 	now?: () => number;
 	onTitle: (title: string, hasRunning: boolean) => void;
+	/** Delegate title rendering/animation to an independent presenter. */
+	onRecords?: (records: PaneRecord[]) => void;
 	onError: (error: unknown) => void;
 }
 
@@ -144,7 +146,10 @@ export class TabTitleGroup {
 				}));
 				this.records = prepareRecords(records.filter((value): value is PaneRecord => !!value));
 				operation = "publish title";
-				if (!this.closed) this.publishTitle();
+				if (!this.closed) {
+					if (this.options.onRecords) this.options.onRecords(this.records);
+					else this.publishTitle();
+				}
 				this.failures = 0;
 				this.retryAt = 0;
 				this.reportedError = false;

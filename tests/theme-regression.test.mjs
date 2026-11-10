@@ -476,7 +476,8 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		},
 	};
 	extension({ on: (event, handler) => handlers.set(event, handler),
-		registerCommand: (name, command) => commands.set(name, command) });
+		registerCommand: (name, command) => commands.set(name, command),
+		appendEntry: (customType, data) => entries.push({ type: "custom", customType, data }) });
 	const emit = (name, event = {}) => handlers.get(name)(event, ctx);
 	const line = () => plain(widget.render(200)[0] ?? "");
 	const frame = () => { tui.renderNow(); return tui.captureRenderState().previousLines.map(plain); };
@@ -499,7 +500,14 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 			terminal.columns = columns; terminal.resize();
 			assert.ok(frame().every(row => visibleWidth(row) <= columns));
 		}
-		// Auto-joins default 'all' group
+		// Title synchronization requires explicit opt-in.
+		assert.equal(titles.at(-1), "ipiui");
+		assert.ok(heartbeatCallbacks.length > 0);
+		await emit("agent_start");
+		assert.match(titles.at(-1), /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]ipiui$/);
+		await emit("agent_settled", { aborted: false });
+		assert.equal(titles.at(-1), "ipiui");
+		await commands.get("tabgroup").handler("all", ctx);
 		await commands.get("tabname").handler("api", ctx);
 		await untilTitle(title => title === "api");
 		assert.ok(heartbeatCallbacks.length > 0);
@@ -540,10 +548,17 @@ test("regular mode: information above editor, empty footer, lifecycle, parallel 
 		assert.equal(editor.getText(), "hello");
 		await untilTitle(title => title === "api");
 		await commands.get("tabgroup").handler("off", ctx);
+		assert.equal(titles.at(-1), "api");
+		await commands.get("ipiui").handler("indicator off", ctx);
 		assert.equal(titles.at(-1), "pi");
 		const count = titles.length;
 		await emit("agent_start"); await emit("agent_settled", { aborted: false });
 		assert.equal(titles.length, count);
+		await emit("session_start");
+		assert.equal(titles.at(-1), "pi", "Saved indicator-off setting is restored");
+		await commands.get("ipiui").handler("indicator on", ctx);
+		assert.equal(titles.at(-1), "api");
+		await commands.get("ipiui").handler("indicator off", ctx);
 		await commands.get("tabgroup").handler("off", ctx);
 		const heartbeatCount = heartbeatCallbacks.length;
 		if (heartbeatCallbacks.at(-1)) heartbeatCallbacks.at(-1)();
@@ -618,6 +633,10 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 	try {
 		await emit("session_start");
 		assert.equal(titles.at(-1), "ipiui");
+		assert.equal(timers.size, 1, "Only the local title heartbeat starts by default");
+		assert.ok(![...timers.values()].some(timer => timer.delay === 1000));
+		await command("group review");
+		assert.equal(titles.at(-1), "ipiui");
 		now++;
 		await peer.start("review", "worker", "running");
 		const poll = [...timers.values()].find(timer => timer.delay === 1000);
@@ -644,7 +663,7 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 		await command("group off");
 		await command("group");
 		assert.match(notices.at(-1), /Title sync is off/);
-		assert.equal(timers.size, 0);
+		assert.equal(timers.size, 1, "Local indicator heartbeat remains when synchronization is off");
 		await commands.get("tabgroup").handler("review", ctx);
 		await command("status");
 		assert.match(notices.at(-1), /Title group: review/);
@@ -741,12 +760,19 @@ test("title lifecycle: idle peers animate from cache, commands agree, shutdown c
 		await command("language en");
 		assert.equal(entries.filter(entry => entry.customType === "ipiui-language" && ["en", "zh"].includes(entry.data.language)).length, 2, "Selecting the current language should not add a record");
 		assert.ok(commands.get("ipiui").getArgumentCompletions("language z").some(item => item.value === "language zh"));
+		assert.ok(commands.get("ipiui").getArgumentCompletions("indicator o").some(item => item.value === "indicator off"));
+		selections.push(5, 1, undefined);
+		await command("");
+		assert.deepEqual(entries.at(-1).data, { enabled: false });
+		await command("indicator on");
 		await command("group bad" + String.fromCharCode(10) + "name");
 		assert.match(notices.at(-1), /no control characters/);
 		await emit("agent_start");
 		await command("group off");
+		assert.match(titles.at(-1), /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]中文名称$/);
+		await command("indicator off");
 		assert.equal(titles.at(-1), "pi");
-		assert.equal(timers.size, 1, "Only one local animation timer is needed");
+		assert.equal(timers.size, 1, "Only one local status animation timer is needed");
 		const animation = [...timers.values()][0];
 		await command("off");
 		const hiddenRequests = renderRequests;
@@ -805,7 +831,7 @@ test("native panel columns align for every selected row and retain values at nar
 	assert.equal(await cancelled, undefined);
 });
 
-test("invalid startup group does not prevent the extension from starting", async () => {
+test("configured group does not auto-enable title synchronization", async () => {
 	const savedGroup = process.env.IPIUI_GROUP;
 	process.env.IPIUI_GROUP = "x".repeat(65);
 	const handlers = new Map(), notices = [];
@@ -813,9 +839,9 @@ test("invalid startup group does not prevent the extension from starting", async
 	try {
 		await handlers.get("session_start")({}, {
 			...context, mode: "tui", isIdle: () => true, sessionManager: { getEntries: () => [], getBranch: () => [] },
-			ui: { notify: text => notices.push(text), setWorkingVisible() {}, setFooter() {}, setWidget() {}, setEditorComponent() {} },
+			ui: { notify: text => notices.push(text), setTitle() {}, setWorkingVisible() {}, setFooter() {}, setWidget() {}, setEditorComponent() {} },
 		});
-		assert.ok(notices.some(text => text.includes("could not join title group")));
+		assert.deepEqual(notices, [], "IPIUI_GROUP only suggests a group; sync stays off until enabled");
 	} finally {
 		await handlers.get("session_shutdown")();
 		if (savedGroup === undefined) delete process.env.IPIUI_GROUP;

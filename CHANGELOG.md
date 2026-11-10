@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.1.2]
+
+- Disable shared title synchronization by default; retain explicit group opt-in.
+- Add an independent, session-persistent title activity indicator, enabled by default.
+
 ## [1.1.1]
 
 - Add selectable Chase and Rainbow status row themes with per-session settings.

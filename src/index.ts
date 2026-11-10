@@ -489,45 +489,48 @@ export default function (pi: ExtensionAPI) {
 	let lastAssistantFailed = false;
 	let titleGroup: TabTitleGroup | undefined;
 	const defaultGroupName = process.env.IPIUI_GROUP || "all";
-	let groupName: string | undefined = defaultGroupName;
+	let groupName: string | undefined;
 	let paneLabel = "cmd";
 	let customPaneLabel = false;
 	let titleStatus: TabStatus = "idle";
-	let titleHeartbeat: ReturnType<typeof setInterval> | undefined;
-	let lastPublishedTitle = "";
+	let indicatorEnabled = true;
+	let titleIndicator: TitleIndicator | undefined;
+	let sharedRecords: PaneRecord[] | undefined;
 	let tabGroupDirectoryRoot: string | undefined = process.env.IPIUI_TEST_GROUP_ROOT;
 
-	const writeTitle = (title: string) => {
-		lastPublishedTitle = title;
-		if (currentContext?.mode === "tui") currentContext.ui.setTitle(title);
+	const localStarted = Date.now();
+	const renderTitle = () => {
+		if (!titleIndicator || currentContext?.mode !== "tui") return;
+		const now = Date.now();
+		const local: PaneRecord = { version: 1, id: "local", started: localStarted, updated: now, label: paneLabel, status: titleStatus };
+		titleIndicator.update(sharedRecords ?? [local], !!titleGroup, indicatorEnabled);
 	};
-	const publishTitle = () => { void titleGroup?.update(titleStatus, paneLabel); };
+	const publishTitle = () => {
+		if (titleGroup) void titleGroup.update(titleStatus, paneLabel);
+		else renderTitle();
+	};
 	const stopTitleGroup = async () => {
-		if (titleHeartbeat) clearInterval(titleHeartbeat);
-		titleHeartbeat = undefined;
 		const previous = titleGroup;
 		titleGroup = undefined;
-		lastPublishedTitle = "";
+		sharedRecords = undefined;
 		await previous?.stop();
 	};
 	const joinTitleGroup = async (name: string) => {
 		await stopTitleGroup();
 		titleGroup = new TabTitleGroup({
 			root: tabGroupDirectoryRoot,
-			onTitle: writeTitle,
+			onTitle() {},
+			onRecords: records => { sharedRecords = records; renderTitle(); },
 			onError: error => currentContext?.ui.notify(t("syncFailed", { detail: error instanceof Error ? error.message : t("retrying") }), "warning"),
 		});
 		try {
 			await titleGroup.start(name, paneLabel, titleStatus);
 			groupName = name;
-			if (titleHeartbeat) clearInterval(titleHeartbeat);
-			titleHeartbeat = setInterval(() => {
-				if (lastPublishedTitle && currentContext?.mode === "tui") currentContext.ui.setTitle(lastPublishedTitle);
-			}, 1500);
-			titleHeartbeat.unref();
+			renderTitle();
 		} catch (error) {
 			await stopTitleGroup();
 			groupName = undefined;
+			renderTitle();
 			throw error;
 		}
 	};
@@ -566,11 +569,16 @@ export default function (pi: ExtensionAPI) {
 	const restoreSettings = (ctx: ExtensionContext) => {
 		state.theme = "chase";
 		language = "en";
+		indicatorEnabled = true;
 		for (const entry of ctx.sessionManager.getBranch()) {
 			if (entry.type !== "custom") continue;
 			if (entry.customType === "ipiui-theme") {
 				const theme = (entry.data as { theme?: unknown } | undefined)?.theme;
 				if (theme === "chase" || theme === "rainbow") state.theme = theme;
+			}
+			if (entry.customType === "ipiui-title-indicator") {
+				const saved = (entry.data as { enabled?: unknown } | undefined)?.enabled;
+				if (typeof saved === "boolean") indicatorEnabled = saved;
 			}
 			if (entry.customType === "ipiui-language") {
 				const saved = (entry.data as { language?: unknown } | undefined)?.language;
@@ -592,6 +600,8 @@ export default function (pi: ExtensionAPI) {
 		lastAssistantFailed = false;
 		sync(ctx, true);
 		if (ctx.mode !== "tui") return;
+		titleIndicator?.stop();
+		titleIndicator = new TitleIndicator({ onTitle: title => currentContext?.ui.setTitle(title) });
 		ctx.ui.setWorkingVisible(false);
 		ctx.ui.setFooter((_tui, _theme, footerData) => {
 			state.gitBranch = footerData.getGitBranch();
@@ -627,6 +637,7 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify(t("startupFailed"), "warning");
 			}
 		}
+		renderTitle();
 		if (state.status === "running") startIconTimer();
 		redraw();
 	});
@@ -703,9 +714,11 @@ export default function (pi: ExtensionAPI) {
 	});
 	const refreshSession = (_event: unknown, ctx: ExtensionContext) => { sync(ctx, true); redraw(); };
 	pi.on("turn_end", refreshSession);
-	pi.on("session_tree", (event, ctx) => { restoreSettings(ctx); refreshSession(event, ctx); });
+	pi.on("session_tree", (event, ctx) => { restoreSettings(ctx); refreshSession(event, ctx); renderTitle(); });
 	pi.on("session_compact", refreshSession);
 	pi.on("session_shutdown", async () => {
+		titleIndicator?.stop();
+		titleIndicator = undefined;
 		stopTimer();
 		await stopTitleGroup();
 		stopBranchWatch?.();
@@ -722,6 +735,7 @@ export default function (pi: ExtensionAPI) {
 				{ value: "name", label: t("paneName"), description: `${singleLine(paneLabel)} (${t(customPaneLabel ? "custom" : "projectDirectory")})` },
 				{ value: "group", label: t("titleSync"), description: groupName ? `${enabledText(true)} (${singleLine(groupName)})` : enabledText(false) },
 				{ value: "theme", label: t("theme"), description: t(state.theme === "rainbow" ? "rainbowName" : "chaseName") },
+				{ value: "indicator", label: t("indicator"), description: enabledText(indicatorEnabled) },
 				{ value: "help", label: t("helpLabel"), description: t("helpValue") },
 			];
 			const choice = await selectPanel(ctx, t("settings"), items, t("navigation"));
@@ -763,6 +777,13 @@ export default function (pi: ExtensionAPI) {
 					{ value: "back", label: t("back") },
 				], t("navigation"));
 				if (selected === "chase" || selected === "rainbow") await handleCommand(`theme ${selected}`, ctx);
+			} else if (choice === "indicator") {
+				const selected = await selectPanel(ctx, t("indicator"), [
+					{ value: "on", label: t("enable"), description: indicatorEnabled ? t("current") : undefined },
+					{ value: "off", label: t("disable"), description: !indicatorEnabled ? t("current") : undefined },
+					{ value: "back", label: t("back") },
+				], t("navigation"));
+				if (selected === "on" || selected === "off") await handleCommand(`indicator ${selected}`, ctx);
 			} else if (choice === "help") {
 				await handleCommand("help", ctx);
 				return;
@@ -778,6 +799,24 @@ export default function (pi: ExtensionAPI) {
 
 		if (!subCmd || subCmd === "menu") {
 			await showPanel(ctx);
+			return;
+		}
+		if (subCmd === "indicator") {
+			if (!param) {
+				ctx.ui.notify(t("indicatorStatus", { value: enabledText(indicatorEnabled) }), "info");
+				return;
+			}
+			if (param !== "on" && param !== "off") {
+				ctx.ui.notify(t("indicatorUsage"), "warning");
+				return;
+			}
+			const enabled = param === "on";
+			if (indicatorEnabled !== enabled) {
+				pi.appendEntry("ipiui-title-indicator", { enabled });
+				indicatorEnabled = enabled;
+			}
+			renderTitle();
+			ctx.ui.notify(t("indicatorStatus", { value: enabledText(indicatorEnabled) }), "info");
 			return;
 		}
 		if (subCmd === "language") {
@@ -814,7 +853,7 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		if (subCmd === "help") {
-			ctx.ui.notify([t("helpIntro"), t("helpVisibility"), t("helpName"), t("helpGroup"), t("helpTheme"), t("helpLanguage"), t("helpStatus")].join("\n"), "info");
+			ctx.ui.notify([t("helpIntro"), t("helpVisibility"), t("helpName"), t("helpGroup"), t("helpIndicator"), t("helpTheme"), t("helpLanguage"), t("helpStatus")].join("\n"), "info");
 			return;
 		}
 
@@ -850,7 +889,7 @@ export default function (pi: ExtensionAPI) {
 			if (param === "off") {
 				await stopTitleGroup();
 				groupName = undefined;
-				ctx.ui.setTitle("pi");
+				renderTitle();
 				ctx.ui.notify(t("groupDisabled"), "info");
 				return;
 			}
@@ -870,7 +909,7 @@ export default function (pi: ExtensionAPI) {
 		if (subCmd === "status") {
 			ctx.ui.notify([
 				t("status"), `${t("topBar")}: ${enabledText(state.visible)}`, `${t("theme")}: ${state.theme ?? "chase"}`,
-				`${t("language")}: ${languageName(language)}`, `${t("paneName")}: ${paneLabel}`, `${t("group")}: ${groupName ?? t("off")}`,
+				`${t("language")}: ${languageName(language)}`, `${t("indicator")}: ${enabledText(indicatorEnabled)}`, `${t("paneName")}: ${paneLabel}`, `${t("group")}: ${groupName ?? t("off")}`,
 			].join("\n"), "info");
 			return;
 		}
