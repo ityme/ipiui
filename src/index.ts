@@ -246,9 +246,16 @@ const DARK_PALETTE = getRainbowBlockPalette(true);
 const LIGHT_PALETTE = getRainbowBlockPalette(false);
 const DARK_RAINBOW_COLORS = [DARK_PALETTE.bgProjBranch, DARK_PALETTE.bgModelThink, DARK_PALETTE.bgTelemetry, DARK_PALETTE.bgCtx].map(rainbowColors);
 const LIGHT_RAINBOW_COLORS = [LIGHT_PALETTE.bgProjBranch, LIGHT_PALETTE.bgModelThink, LIGHT_PALETTE.bgTelemetry, LIGHT_PALETTE.bgCtx].map(rainbowColors);
-const THINKING_HUES = [25, 85, 155, 235, 300, 55, 190, 265, 340, 115];
-const DARK_THINKING_COLORS = THINKING_HUES.map(hue => ensureTextContrast(oklchColor(0.82, 0.10, hue), DARK_PALETTE.bgModelThink));
-const LIGHT_THINKING_COLORS = THINKING_HUES.map(hue => ensureTextContrast(oklchColor(0.43, 0.10, hue), LIGHT_PALETTE.bgModelThink));
+const DARK_THINKING_COLORS = [
+	rgbColor(70, 200, 210), rgbColor(88, 172, 255), rgbColor(173, 131, 255), rgbColor(235, 112, 209),
+	rgbColor(66, 206, 255), rgbColor(126, 153, 255), rgbColor(205, 119, 246), rgbColor(74, 231, 212),
+	rgbColor(89, 190, 255), rgbColor(157, 140, 255),
+].map(color => ensureTextContrast(mixColors(color, DARK_PALETTE.bgModelThink, 0.09, "srgb"), DARK_PALETTE.bgModelThink));
+const LIGHT_THINKING_COLORS = [
+	rgbColor(0, 103, 120), rgbColor(33, 91, 184), rgbColor(108, 57, 185), rgbColor(157, 43, 128),
+	rgbColor(0, 104, 156), rgbColor(67, 75, 181), rgbColor(137, 46, 165), rgbColor(0, 107, 98),
+	rgbColor(26, 99, 168), rgbColor(91, 65, 184),
+].map(color => ensureTextContrast(mixColors(color, LIGHT_PALETTE.bgModelThink, 0.06, "srgb"), LIGHT_PALETTE.bgModelThink));
 
 function singleLine(text: string): string {
 	return stripTerminalSequences(text).replace(/[\x00-\x1f\x7f-\x9f]/g, " ").replace(/ +/g, " ").trim();
