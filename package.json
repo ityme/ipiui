@@ -37,7 +37,8 @@
     "CHANGELOG.md",
     "LICENSE",
     "docs/styles-gallery.html",
-    "docs/status-row.png"
+    "docs/status-row.png",
+    "docs/status-row-activity.png"
   ],
   "repository": {
     "type": "git",

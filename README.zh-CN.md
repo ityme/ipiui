@@ -5,6 +5,8 @@
 - [English README](README.md)
 - [状态栏样式预览](docs/styles-gallery.html)
 
+![显示运行标识的 ipiui 状态栏](docs/status-row-activity.png)
+
 ![Pi 原生输入框上方的 ipiui 状态栏](docs/status-row.png)
 
 ## 环境要求

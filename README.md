@@ -5,6 +5,8 @@ A Pi extension that adds a compact status row above Pi's native editor and aggre
 - [中文使用指南](README.zh-CN.md)
 - [Status row preview gallery](docs/styles-gallery.html)
 
+![ipiui status row showing the working activity indicator](docs/status-row-activity.png)
+
 ![ipiui status row above the native Pi prompt editor](docs/status-row.png)
 
 ## Requirements
