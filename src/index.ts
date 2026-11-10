@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { TabTitleGroup, cleanTitleLabel, type TabStatus } from "./tab-title.js";
+import { TabTitleGroup, cleanTitleLabel, type PaneRecord, type TabStatus } from "./tab-title.js";
+import { TitleIndicator } from "./title-indicator.js";
 import { languageName, translate, type PanelLanguage } from "./i18n.js";
 import { selectPanel } from "./panel.js";
 import {
@@ -924,9 +925,9 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.notify(t("unknown", { command: subCmd }), "warning");
 	};
 	pi.registerCommand("ipiui", {
-		description: "Open ipiui settings (设置), or use on/off/name/group/theme/language/status/help",
+		description: "Open ipiui settings (设置), or use on/off/name/group/indicator/theme/language/status/help",
 		getArgumentCompletions: prefix => {
-			const commands = ["menu", "on", "off", "toggle", "name", "name reset", "group", "group all", "group off", "theme", "theme chase", "theme rainbow", "language", "language en", "language zh", "status", "help"];
+			const commands = ["menu", "on", "off", "toggle", "name", "name reset", "group", "group all", "group off", "theme", "theme chase", "theme rainbow", "language", "language en", "language zh", "indicator", "indicator on", "indicator off", "status", "help"];
 			const matches = commands.filter(value => value.startsWith(prefix)).map(value => ({ value, label: `/ipiui ${value}` }));
 			return matches.length ? matches : null;
 		},
